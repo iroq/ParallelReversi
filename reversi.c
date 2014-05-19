@@ -28,17 +28,17 @@ void draw_board(char board[BOARD_SIZE][BOARD_SIZE])
 			if(board[i][j] == 'O')
 			{
 				standend();
-				attron( COLOR_PAIR(1) );
+				attron( COLOR_PAIR(WHITE) );
 			}
 			else if(board[i][j] == 'X')
 			{
 				standend();
-				attron( COLOR_PAIR(2) );
+				attron( COLOR_PAIR(BLACK) );
 			}
 			else
 			{
 				standend();
-				attron( COLOR_PAIR(3) );
+				attron( COLOR_PAIR(NONE) );
 			}
 			mvaddch( board2screen_row(i), board2screen_col(j), board[i][j] );
 		}				
