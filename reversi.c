@@ -1,9 +1,11 @@
 #include <ncurses.h>
+#include <stdlib.h>
 #define BOARD_SIZE 8
 #define KEY_ENTER_DEF 10
 #define WHITE 1
 #define BLACK 2
 #define NONE 3
+#define POSSIBLE 4
 #define board2screen_row(x) x+row/2-BOARD_SIZE/2
 #define board2screen_col(x) x*2+col/2-BOARD_SIZE
 #define screen2board_row(x) x - (row/2-BOARD_SIZE/2)
@@ -11,15 +13,24 @@
 
 int row,col;
 
+void find_possible_moves(int moves[2][2])
+{
+	moves[0][0]= board2screen_row( rand()%BOARD_SIZE);
+	moves[0][1] = board2screen_col( rand()%BOARD_SIZE);
+	
+	moves[1][0]=board2screen_row( rand()%BOARD_SIZE);
+	moves[1][1] = board2screen_col( rand()%BOARD_SIZE);
+}
 void draw_board(char board[BOARD_SIZE][BOARD_SIZE])
 {
 	int i,j;
 	clear();
 	start_color();
 	use_default_colors();
-	init_pair(1, COLOR_BLACK, COLOR_WHITE);
-	init_pair(2, COLOR_WHITE, COLOR_BLACK);
-	init_pair(3, COLOR_BLUE, COLOR_BLUE);
+	init_pair(WHITE, COLOR_BLACK, COLOR_WHITE);
+	init_pair(BLACK, COLOR_WHITE, COLOR_BLACK);
+	init_pair(NONE, COLOR_BLUE, COLOR_BLUE);
+	init_pair(POSSIBLE, COLOR_BLACK, COLOR_RED);
 	wborder(stdscr, '|', '|', '-', '-', '+', '+', '+', '+');
 	for(i=0;i<BOARD_SIZE;i++)
 	{
@@ -48,7 +59,7 @@ void draw_board(char board[BOARD_SIZE][BOARD_SIZE])
 
 void start_new_game(char board[BOARD_SIZE][BOARD_SIZE])
 {
-	int usrInput, currPlayer =0, turnCounter = 0;	
+	int i, usrInput, currPlayer =0, turnCounter = 0, possibleMoves[2][2];	
 	char players[] = {'O', 'X'}, clickedChar;
 	MEVENT event;
 	draw_board(board);
@@ -62,6 +73,7 @@ void start_new_game(char board[BOARD_SIZE][BOARD_SIZE])
 			clickedChar = mvinch(event.y,event.x)& A_CHARTEXT;
 			if(clickedChar == '-')
 			{
+				draw_board(board);
 				standend();
 				attron( COLOR_PAIR(currPlayer + 1) );
 				mvaddch( event.y, event.x, players[currPlayer] );
@@ -69,7 +81,15 @@ void start_new_game(char board[BOARD_SIZE][BOARD_SIZE])
 				board[screen2board_row(event.y)][screen2board_col(event.x)] = players[currPlayer];
 				mvprintw( 0, 0, "%d", screen2board_row(event.y));//debug
 				mvprintw( 1, 0, "%d", screen2board_col(event.x));
+				find_possible_moves(possibleMoves);
+				
 				currPlayer = (currPlayer + 1)%2;	
+				for(i=0; i < 2; i++)
+				{
+					attron( COLOR_PAIR(POSSIBLE) );
+					mvaddch( possibleMoves[i][0], possibleMoves[i][1], '-');
+					attroff( COLOR_PAIR(POSSIBLE) );
+				}
 				turnCounter++;			
 			}			
 		}
