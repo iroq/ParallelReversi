@@ -5,7 +5,7 @@
 #define BLACK 2
 #define NONE 3
 #define board2screen_row(x) x+row/2-BOARD_SIZE/2
-#define board2screen_col(x) x+col/2-BOARD_SIZE
+#define board2screen_col(x) x*2+col/2-BOARD_SIZE
 #define screen2board_row(x) x - (row/2-BOARD_SIZE/2)
 #define screen2board_col(x) (x - (col/2-BOARD_SIZE))/2
 
@@ -23,7 +23,7 @@ void draw_board(char board[BOARD_SIZE][BOARD_SIZE])
 	wborder(stdscr, '|', '|', '-', '-', '+', '+', '+', '+');
 	for(i=0;i<BOARD_SIZE;i++)
 	{
-		for(j=0;j<BOARD_SIZE*2; j+=2)
+		for(j=0;j<BOARD_SIZE; j++)
 		{
 			if(board[i][j] == 'O')
 			{
