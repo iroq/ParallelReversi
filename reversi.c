@@ -4,6 +4,10 @@
 #define WHITE 1
 #define BLACK 2
 #define NONE 3
+#define board2screen_row(x) x+row/2-BOARD_SIZE/2
+#define board2screen_col(x) x+col/2-BOARD_SIZE
+#define screen2board_row(x) x - (row/2-BOARD_SIZE/2)
+#define screen2board_col(x) (x - (col/2-BOARD_SIZE))/2
 
 int row,col;
 
@@ -17,9 +21,9 @@ void draw_board(char board[BOARD_SIZE][BOARD_SIZE])
 	init_pair(2, COLOR_WHITE, COLOR_BLACK);
 	init_pair(3, COLOR_BLUE, COLOR_BLUE);
 	wborder(stdscr, '|', '|', '-', '-', '+', '+', '+', '+');
-	for(i=0;i<8;i++)
+	for(i=0;i<BOARD_SIZE;i++)
 	{
-		for(j=0;j<16; j+=2)
+		for(j=0;j<BOARD_SIZE*2; j+=2)
 		{
 			if(board[i][j] == 'O')
 			{
@@ -36,50 +40,58 @@ void draw_board(char board[BOARD_SIZE][BOARD_SIZE])
 				standend();
 				attron( COLOR_PAIR(3) );
 			}
-			mvaddch( i+row/2-4, j+col/2-8, board[i][j] );
+			mvaddch( board2screen_row(i), board2screen_col(j), board[i][j] );
 		}				
 	}
-				standend();
+	standend();
 }
 
 void start_new_game(char board[BOARD_SIZE][BOARD_SIZE])
 {
-	int usrInput, currPlayer =0, win = 0;	
-	char players[] = {'O', 'X'}, c;
+	int usrInput, currPlayer =0, turnCounter = 0;	
+	char players[] = {'O', 'X'}, clickedChar;
 	MEVENT event;
 	draw_board(board);
 	mousemask(BUTTON1_CLICKED , NULL); 
 	noecho();
-	while(!win)
+	while(turnCounter!= BOARD_SIZE*BOARD_SIZE)
 	{
 		usrInput = getch();
 		if(usrInput==KEY_MOUSE && getmouse(&event) == OK)
 		{
-		c = mvinch(event.y,event.x)& A_CHARTEXT;
-			if(c == '-')
+			clickedChar = mvinch(event.y,event.x)& A_CHARTEXT;
+			if(clickedChar == '-')
 			{
 				standend();
 				attron( COLOR_PAIR(currPlayer + 1) );
 				mvaddch( event.y, event.x, players[currPlayer] );
 				attroff( COLOR_PAIR(currPlayer + 1) );
-				currPlayer = (currPlayer + 1)%2;
+				board[screen2board_row(event.y)][screen2board_col(event.x)] = players[currPlayer];
+				mvprintw( 0, 0, "%d", screen2board_row(event.y));//debug
+				mvprintw( 1, 0, "%d", screen2board_col(event.x));
+				currPlayer = (currPlayer + 1)%2;	
+				turnCounter++;			
 			}			
 		}
 	}	
 	return;
 }
-int main()
+
+void init_board(char board[BOARD_SIZE][BOARD_SIZE])
 {
-	char board[BOARD_SIZE][BOARD_SIZE] = 
-	{{'O', 'O','O', 'O','O', 'O','O', 'O'},
-	{'O', 'O','-', 'O','O', 'O','O', 'O'},
-	{'O', 'O','O', 'O','O', 'O','O', 'O'},
-	{'O', '-','O', 'O','O', 'O','O', 'O'},
-	{'O', 'O','O', 'O','O', 'O','O', 'O'},
-	{'O', 'O','O', 'O','X', 'O','O', 'O'},
-	{'O', 'O','O', 'O','O', 'O','O', 'O'},
-	{'O', 'O','O', 'O','O', 'O','O', 'O'}};
-    initscr();
+	int i,j;
+	for(i = 0; i < 8; i++)
+	{
+		for(j = 0; j < 8; j++)
+		{
+			board[i][j] = '-';				
+		}
+	}
+}
+
+void display_menu(char board[BOARD_SIZE][BOARD_SIZE])
+{
+	initscr();
     curs_set(0);
     keypad(stdscr, TRUE);
     getmaxyx(stdscr,row,col);
@@ -128,10 +140,14 @@ int main()
         standend();
         clear();
     } while( currItem != 2 || usrInput != 10 );
-    
-    move( 9, 0 );
-    printw( "Koniec programu, przycisnij przycisk..." );
+}
+int main()
+{	
+	char board[BOARD_SIZE][BOARD_SIZE];	
+	init_board(board);
+    display_menu(board);    
+    printw( "Thanks for playing!" );
     getch();
-    endwin();
-    
+    endwin();   
+    return 0; 
 }
