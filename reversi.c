@@ -1,5 +1,6 @@
 #include <ncurses.h>
 #include <stdlib.h>
+#include <unistd.h>
 #define BOARD_SIZE 8
 #define KEY_ENTER_DEF 10
 #define WHITE 1
@@ -12,15 +13,81 @@
 #define screen2board_col(x) (x - (col/2-BOARD_SIZE))/2
 
 int row,col;
-
-void find_possible_moves(int moves[2][2])
+  
+int in_bounds(int x, int y)
 {
-	moves[0][0]= board2screen_row( rand()%BOARD_SIZE);
-	moves[0][1] = board2screen_col( rand()%BOARD_SIZE);
-	
-	moves[1][0]=board2screen_row( rand()%BOARD_SIZE);
-	moves[1][1] = board2screen_col( rand()%BOARD_SIZE);
+    return (x >= 0 && y >= 0 && x < BOARD_SIZE && y < BOARD_SIZE) ? 1 : 0;
 }
+
+char opponent(char player)
+{
+    switch (player)
+    {
+    case 'X':
+        return 'O';
+    case 'O':
+        return 'X';
+    default:
+        return '-';
+    }
+}
+  
+int is_legal_move(int x, int y, char board[BOARD_SIZE][BOARD_SIZE], char currentPlayer)
+{
+    int i, d, xx, yy;
+    int sawOther, sawSelf;
+    int dx[] = { -1, 0, 1, -1, 1, -1, 0, 1 };
+    int dy[] = { -1, -1, -1, 0, 0, 1, 1, 1 };
+      
+    if (in_bounds(x, y) && board[x][y] == '-') // in bounds, empty
+    {
+		for (i = 0; i < BOARD_SIZE; i++)
+		{
+			sawOther = 0;
+			sawSelf = 0;
+			xx = x;
+			yy = y;
+			for (d = 0; d < BOARD_SIZE; d++)
+			{
+				xx += dx[i];
+				yy += dy[i];
+				if (!in_bounds(xx, yy)) break;
+				  
+				if (board[xx][yy] == currentPlayer)
+				{
+				    sawSelf = 1;
+				    break;
+				}
+				else if (board[xx][yy] == opponent(currentPlayer)) sawOther = 1;
+				else break;
+			}
+			  
+			if (sawOther && sawSelf)
+				return 1;  
+		}    
+		return 0;
+    }
+    return 0;
+}
+
+void find_possible_moves(int moves[BOARD_SIZE * BOARD_SIZE][2], char board[BOARD_SIZE][BOARD_SIZE], char currentPlayer)
+{
+    int i, j, counter = 0;
+    for (i = 0; i < BOARD_SIZE; i++)
+    {
+        for (j = 0; j < BOARD_SIZE; j++)
+        {
+            if (is_legal_move(i, j, board, currentPlayer))
+            {
+                moves[counter][0] = board2screen_row(i);
+                moves[counter][1] = board2screen_col(j);
+                counter++;
+            }
+        }
+    }
+  
+}
+
 void draw_board(char board[BOARD_SIZE][BOARD_SIZE])
 {
 	int i,j;
@@ -59,7 +126,7 @@ void draw_board(char board[BOARD_SIZE][BOARD_SIZE])
 
 void start_new_game(char board[BOARD_SIZE][BOARD_SIZE])
 {
-	int i, usrInput, currPlayer =0, turnCounter = 0, possibleMoves[2][2];	
+	int i, usrInput, currPlayer =0, turnCounter = 0, possibleMoves[BOARD_SIZE * BOARD_SIZE][2];	
 	char players[] = {'O', 'X'}, clickedChar;
 	MEVENT event;
 	draw_board(board);
@@ -81,11 +148,12 @@ void start_new_game(char board[BOARD_SIZE][BOARD_SIZE])
 				board[screen2board_row(event.y)][screen2board_col(event.x)] = players[currPlayer];
 				mvprintw( 0, 0, "%d", screen2board_row(event.y));//debug
 				mvprintw( 1, 0, "%d", screen2board_col(event.x));
-				find_possible_moves(possibleMoves);
 				
 				currPlayer = (currPlayer + 1)%2;	
-				for(i=0; i < 2; i++)
+				find_possible_moves(possibleMoves, board, players[currPlayer]);
+				for(i = 0; i < BOARD_SIZE * BOARD_SIZE; i++)
 				{
+					mvprintw(i, 3, "[%d, %d]\n", possibleMoves[i][0], possibleMoves[i][1]);
 					attron( COLOR_PAIR(POSSIBLE) );
 					mvaddch( possibleMoves[i][0], possibleMoves[i][1], '-');
 					attroff( COLOR_PAIR(POSSIBLE) );
@@ -100,6 +168,8 @@ void start_new_game(char board[BOARD_SIZE][BOARD_SIZE])
 void init_board(char board[BOARD_SIZE][BOARD_SIZE])
 {
 	int i,j;
+	int half = BOARD_SIZE/2;
+
 	for(i = 0; i < 8; i++)
 	{
 		for(j = 0; j < 8; j++)
@@ -107,6 +177,11 @@ void init_board(char board[BOARD_SIZE][BOARD_SIZE])
 			board[i][j] = '-';				
 		}
 	}
+
+	board[half - 1][half - 1] = 'O';
+	board[half - 1][half] = 'X';
+	board[half][half] = 'O';
+	board[half][half - 1] = 'X';
 }
 
 void display_menu(char board[BOARD_SIZE][BOARD_SIZE])
@@ -161,6 +236,7 @@ void display_menu(char board[BOARD_SIZE][BOARD_SIZE])
         clear();
     } while( currItem != 2 || usrInput != 10 );
 }
+
 int main()
 {	
 	char board[BOARD_SIZE][BOARD_SIZE];	
