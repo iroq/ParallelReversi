@@ -1,6 +1,5 @@
 #include <ncurses.h>
 #include <stdlib.h>
-#include <unistd.h>
 #define BOARD_SIZE 8
 #define KEY_ENTER_DEF 10
 #define WHITE 1
@@ -70,7 +69,7 @@ int is_legal_move(int x, int y, char board[BOARD_SIZE][BOARD_SIZE], char current
     return 0;
 }
 
-void find_possible_moves(int moves[BOARD_SIZE * BOARD_SIZE][2], char board[BOARD_SIZE][BOARD_SIZE], char currentPlayer)
+int find_possible_moves(int moves[BOARD_SIZE * BOARD_SIZE][2], char board[BOARD_SIZE][BOARD_SIZE], char currentPlayer)
 {
     int i, j, counter = 0;
     for (i = 0; i < BOARD_SIZE; i++)
@@ -79,13 +78,14 @@ void find_possible_moves(int moves[BOARD_SIZE * BOARD_SIZE][2], char board[BOARD
         {
             if (is_legal_move(i, j, board, currentPlayer))
             {
+				//mvprintw(counter, 3, "[%d, %d]\n", i, j);
                 moves[counter][0] = board2screen_row(i);
                 moves[counter][1] = board2screen_col(j);
                 counter++;
             }
         }
     }
-  
+	return counter;
 }
 
 void draw_board(char board[BOARD_SIZE][BOARD_SIZE])
@@ -126,38 +126,51 @@ void draw_board(char board[BOARD_SIZE][BOARD_SIZE])
 
 void start_new_game(char board[BOARD_SIZE][BOARD_SIZE])
 {
-	int i, usrInput, currPlayer =0, turnCounter = 0, possibleMoves[BOARD_SIZE * BOARD_SIZE][2];	
-	char players[] = {'O', 'X'}, clickedChar;
+	int i, usrInput, currPlayer =0, turnCounter = 4, possibleMoves[BOARD_SIZE * BOARD_SIZE][2], moves, x, y;
+	short clickedColor;	
+	char players[] = {'O', 'X'};
 	MEVENT event;
 	draw_board(board);
 	mousemask(BUTTON1_CLICKED , NULL); 
 	noecho();
+
+	moves = find_possible_moves(possibleMoves, board, players[currPlayer]);
+	for(i = 0; i < moves; i++)
+	{
+		attron( COLOR_PAIR(POSSIBLE) );
+		mvaddch( possibleMoves[i][0], possibleMoves[i][1], '-');
+		attroff( COLOR_PAIR(POSSIBLE) );
+	}
+	mvprintw(1, 1, "PLAYER: %c", players[currPlayer]);
+
 	while(turnCounter!= BOARD_SIZE*BOARD_SIZE)
 	{
 		usrInput = getch();
 		if(usrInput==KEY_MOUSE && getmouse(&event) == OK)
 		{
-			clickedChar = mvinch(event.y,event.x)& A_CHARTEXT;
-			if(clickedChar == '-')
+			clickedColor = (mvinch(event.y, event.x) & A_COLOR) >> 8;
+			x = screen2board_row(event.y);
+			y = screen2board_col(event.x);
+			if(clickedColor == POSSIBLE)
 			{
 				draw_board(board);
 				standend();
 				attron( COLOR_PAIR(currPlayer + 1) );
 				mvaddch( event.y, event.x, players[currPlayer] );
 				attroff( COLOR_PAIR(currPlayer + 1) );
-				board[screen2board_row(event.y)][screen2board_col(event.x)] = players[currPlayer];
-				mvprintw( 0, 0, "%d", screen2board_row(event.y));//debug
-				mvprintw( 1, 0, "%d", screen2board_col(event.x));
+				board[x][y] = players[currPlayer];
+				//mvprintw( 0, 0, "%d", screen2board_row(event.y));//debug
+				//mvprintw( 1, 0, "%d", screen2board_col(event.x));
 				
 				currPlayer = (currPlayer + 1)%2;	
-				find_possible_moves(possibleMoves, board, players[currPlayer]);
-				for(i = 0; i < BOARD_SIZE * BOARD_SIZE; i++)
+				moves = find_possible_moves(possibleMoves, board, players[currPlayer]);
+				for(i = 0; i < moves; i++)
 				{
-					mvprintw(i, 3, "[%d, %d]\n", possibleMoves[i][0], possibleMoves[i][1]);
 					attron( COLOR_PAIR(POSSIBLE) );
 					mvaddch( possibleMoves[i][0], possibleMoves[i][1], '-');
 					attroff( COLOR_PAIR(POSSIBLE) );
 				}
+				mvprintw( 1, 1, "%c", players[currPlayer]);
 				turnCounter++;			
 			}			
 		}
