@@ -31,7 +31,23 @@ char opponent(char player)
         return '-';
     }
 }
- 
+
+void count_stones(int *xcount, int *ocount, char board[BOARD_SIZE][BOARD_SIZE])
+{
+	int i,j;
+	*xcount=0;
+	*ocount=0;
+	for(i=0;i<BOARD_SIZE;i++)
+		for(j=0;j<BOARD_SIZE;j++)
+		{
+			if(board[i][j]=='X')
+				(*xcount)++;
+			else if(board[i][j]=='O')
+				(*ocount)++;
+		}
+	
+}
+
 void draw_board(char board[BOARD_SIZE][BOARD_SIZE])
 {
 	int i,j;
@@ -162,60 +178,6 @@ int find_possible_moves(int moves[BOARD_SIZE * BOARD_SIZE][2], char board[BOARD_
 	return counter;
 }
 
-
-
-void start_new_game(char board[BOARD_SIZE][BOARD_SIZE])
-{
-	int i, usrInput, currPlayer =0, turnCounter = 4, possibleMoves[BOARD_SIZE * BOARD_SIZE][2], moves, x, y;
-	short clickedColor;	
-	char players[] = {'O', 'X'};
-	MEVENT event;
-	draw_board(board);
-	mousemask(BUTTON1_CLICKED , NULL); 
-	noecho();
-
-	moves = find_possible_moves(possibleMoves, board, players[currPlayer]);
-	for(i = 0; i < moves; i++)
-	{
-		attron( COLOR_PAIR(POSSIBLE) );
-		mvaddch( possibleMoves[i][0], possibleMoves[i][1], '-');
-		attroff( COLOR_PAIR(POSSIBLE) );
-	}
-	mvprintw(1, 1, "PLAYER: %c", players[currPlayer]);
-
-	while(turnCounter!= BOARD_SIZE*BOARD_SIZE)
-	{
-		usrInput = getch();
-		if(usrInput==KEY_MOUSE && getmouse(&event) == OK)
-		{
-			clickedColor = (mvinch(event.y, event.x) & A_COLOR) >> 8;
-			x = screen2board_row(event.y);
-			y = screen2board_col(event.x);
-			if(clickedColor == POSSIBLE)
-			{
-				standend();
-				attron( COLOR_PAIR(currPlayer + 1) );
-				mvaddch( event.y, event.x, players[currPlayer] );
-				attroff( COLOR_PAIR(currPlayer + 1) );
-				make_move(x, y, players[currPlayer], board);
-				draw_board(board);				
-
-				currPlayer = (currPlayer + 1)%2;	
-				moves = find_possible_moves(possibleMoves, board, players[currPlayer]);
-				for(i = 0; i < moves; i++)
-				{
-					attron( COLOR_PAIR(POSSIBLE) );
-					mvaddch( possibleMoves[i][0], possibleMoves[i][1], '-');
-					attroff( COLOR_PAIR(POSSIBLE) );
-				}
-				mvprintw( 1, 1, "%c", players[currPlayer]);
-				turnCounter++;			
-			}			
-		}
-	}	
-	return;
-}
-
 void init_board(char board[BOARD_SIZE][BOARD_SIZE])
 {
 	int i,j;
@@ -233,6 +195,78 @@ void init_board(char board[BOARD_SIZE][BOARD_SIZE])
 	board[half - 1][half] = 'X';
 	board[half][half] = 'O';
 	board[half][half - 1] = 'X';
+}
+
+void start_new_game(char board[BOARD_SIZE][BOARD_SIZE])
+{
+	int i, usrInput, currPlayer =0, turnCounter = 4, possibleMoves[BOARD_SIZE * BOARD_SIZE][2], moves, x, y;
+	int xcount, ocount, move_was_possible;
+	short clickedColor;	
+	char players[] = {'O', 'X'};
+	MEVENT event;
+	init_board(board);
+	mousemask(BUTTON1_CLICKED , NULL); 
+	noecho();
+	
+	moves = find_possible_moves(possibleMoves, board, players[currPlayer]);
+	draw_board(board);
+	for(i = 0; i < moves; i++)
+	{
+		attron( COLOR_PAIR(POSSIBLE) );
+		mvaddch( possibleMoves[i][0], possibleMoves[i][1], '-');
+		attroff( COLOR_PAIR(POSSIBLE) );
+	}
+	mvprintw( 1, 1, "PLAYER: %c", players[currPlayer]);
+
+	move_was_possible=TRUE;
+	while(turnCounter<BOARD_SIZE*BOARD_SIZE)
+	{
+		usrInput = getch();
+		if(usrInput==KEY_MOUSE && getmouse(&event) == OK)
+		{
+			clickedColor = (mvinch(event.y, event.x) & A_COLOR) >> 8;
+			x = screen2board_row(event.y);
+			y = screen2board_col(event.x);
+			if(clickedColor == POSSIBLE)
+			{
+				standend();
+				attron( COLOR_PAIR(currPlayer + 1) );
+				mvaddch( event.y, event.x, players[currPlayer] );
+				attroff( COLOR_PAIR(currPlayer + 1) );
+				make_move(x, y, players[currPlayer], board);
+				count_stones(&xcount, &ocount, board);
+				draw_board(board);
+				mvprintw(2,1, "X SCORE: %d", xcount);
+				mvprintw(3,1, "O SCORE: %d", ocount);			
+
+				currPlayer = (currPlayer + 1)%2;	
+				moves = find_possible_moves(possibleMoves, board, players[currPlayer]);
+				if(moves==0)
+				{
+					if(!move_was_possible)
+						break;
+					else
+						move_was_possible=FALSE;
+				}
+					
+				for(i = 0; i < moves; i++)
+				{
+					attron( COLOR_PAIR(POSSIBLE) );
+					mvaddch( possibleMoves[i][0], possibleMoves[i][1], '-');
+					attroff( COLOR_PAIR(POSSIBLE) );
+				}
+				mvprintw( 1, 1, "PLAYER: %c", players[currPlayer]);
+				turnCounter++;			
+			}			
+		}
+	}
+	clear();
+	if(xcount==ocount)
+		mvprintw(row/2, (col/2)-2, "TIE!");
+	else
+		mvprintw(row/2, (col/2)-5, "PLAYER: %c WON!", (xcount<ocount)?'O':'X');
+	getch();
+	return;
 }
 
 void display_menu(char board[BOARD_SIZE][BOARD_SIZE])
