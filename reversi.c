@@ -1,5 +1,6 @@
 #include <ncurses.h>
 #include <stdlib.h>
+#include "utils.h"
 #define BOARD_SIZE 8
 #define KEY_ENTER_DEF 10
 #define WHITE 1
@@ -31,6 +32,47 @@ char opponent(char player)
     }
 }
   
+/* This function assumes that the move is legal. */
+void make_move(int x, int y, char player, char board[BOARD_SIZE][BOARD_SIZE])
+{
+	int Ox=x, Oy=y;
+	int dx,dy;
+
+	board[x][y]=player;
+	for(dx=-1; dx<=1; dx++)
+		for(dy=-1; dy<=1; dy++)
+		{
+			x=Ox;
+			y=Oy;
+			printf("dx=%d, dy=%d\n",dx, dy);
+			x+=dx;
+			y+=dy;
+			while(betw(x,0,BOARD_SIZE-1) && betw(y,0,BOARD_SIZE-1)
+				&& board[x][y]==opponent(player))
+			{
+				printf("Incrementing\n");
+				board[x][y]=player;
+				x+=dx;
+				y+=dy;
+			}
+			if(betw(x,0,BOARD_SIZE-1)==FALSE || betw(y,0,BOARD_SIZE-1)==FALSE
+				|| board[x][y]!=player)
+			{
+				/* Backtrack */
+				x-=dx;
+				y-=dy;
+				while(x!=Ox||y!=Oy)
+				{
+					printf("Decrementing\n");
+					board[x][y]=opponent(player);
+					x-=dx;
+					y-=dy;
+				}
+			}
+			
+		}
+}
+	
 int is_legal_move(int x, int y, char board[BOARD_SIZE][BOARD_SIZE], char currentPlayer)
 {
     int i, d, xx, yy;
@@ -158,10 +200,13 @@ void start_new_game(char board[BOARD_SIZE][BOARD_SIZE])
 				attron( COLOR_PAIR(currPlayer + 1) );
 				mvaddch( event.y, event.x, players[currPlayer] );
 				attroff( COLOR_PAIR(currPlayer + 1) );
-				board[x][y] = players[currPlayer];
+				//board[x][y]=players[currPlayer];
+				make_move(x, y, players[currPlayer], board);
+				
 				//mvprintw( 0, 0, "%d", screen2board_row(event.y));//debug
 				//mvprintw( 1, 0, "%d", screen2board_col(event.x));
 				
+
 				currPlayer = (currPlayer + 1)%2;	
 				moves = find_possible_moves(possibleMoves, board, players[currPlayer]);
 				for(i = 0; i < moves; i++)
