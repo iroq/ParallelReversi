@@ -31,7 +31,42 @@ char opponent(char player)
         return '-';
     }
 }
-  
+ 
+void draw_board(char board[BOARD_SIZE][BOARD_SIZE])
+{
+	int i,j;
+	clear();
+	start_color();
+	use_default_colors();
+	init_pair(WHITE, COLOR_BLACK, COLOR_WHITE);
+	init_pair(BLACK, COLOR_WHITE, COLOR_BLACK);
+	init_pair(NONE, COLOR_BLUE, COLOR_BLUE);
+	init_pair(POSSIBLE, COLOR_BLACK, COLOR_RED);
+	wborder(stdscr, '|', '|', '-', '-', '+', '+', '+', '+');
+	for(i=0;i<BOARD_SIZE;i++)
+	{
+		for(j=0;j<BOARD_SIZE; j++)
+		{
+			if(board[i][j] == 'O')
+			{
+				standend();
+				attron( COLOR_PAIR(WHITE) );
+			}
+			else if(board[i][j] == 'X')
+			{
+				standend();
+				attron( COLOR_PAIR(BLACK) );
+			}
+			else
+			{
+				standend();
+				attron( COLOR_PAIR(NONE) );
+			}
+			mvaddch( board2screen_row(i), board2screen_col(j), board[i][j] );
+		}				
+	}
+	standend();
+}
 /* This function assumes that the move is legal. */
 void make_move(int x, int y, char player, char board[BOARD_SIZE][BOARD_SIZE])
 {
@@ -44,13 +79,11 @@ void make_move(int x, int y, char player, char board[BOARD_SIZE][BOARD_SIZE])
 		{
 			x=Ox;
 			y=Oy;
-			printf("dx=%d, dy=%d\n",dx, dy);
 			x+=dx;
 			y+=dy;
 			while(betw(x,0,BOARD_SIZE-1) && betw(y,0,BOARD_SIZE-1)
 				&& board[x][y]==opponent(player))
 			{
-				printf("Incrementing\n");
 				board[x][y]=player;
 				x+=dx;
 				y+=dy;
@@ -63,7 +96,6 @@ void make_move(int x, int y, char player, char board[BOARD_SIZE][BOARD_SIZE])
 				y-=dy;
 				while(x!=Ox||y!=Oy)
 				{
-					printf("Decrementing\n");
 					board[x][y]=opponent(player);
 					x-=dx;
 					y-=dy;
@@ -130,41 +162,7 @@ int find_possible_moves(int moves[BOARD_SIZE * BOARD_SIZE][2], char board[BOARD_
 	return counter;
 }
 
-void draw_board(char board[BOARD_SIZE][BOARD_SIZE])
-{
-	int i,j;
-	clear();
-	start_color();
-	use_default_colors();
-	init_pair(WHITE, COLOR_BLACK, COLOR_WHITE);
-	init_pair(BLACK, COLOR_WHITE, COLOR_BLACK);
-	init_pair(NONE, COLOR_BLUE, COLOR_BLUE);
-	init_pair(POSSIBLE, COLOR_BLACK, COLOR_RED);
-	wborder(stdscr, '|', '|', '-', '-', '+', '+', '+', '+');
-	for(i=0;i<BOARD_SIZE;i++)
-	{
-		for(j=0;j<BOARD_SIZE; j++)
-		{
-			if(board[i][j] == 'O')
-			{
-				standend();
-				attron( COLOR_PAIR(WHITE) );
-			}
-			else if(board[i][j] == 'X')
-			{
-				standend();
-				attron( COLOR_PAIR(BLACK) );
-			}
-			else
-			{
-				standend();
-				attron( COLOR_PAIR(NONE) );
-			}
-			mvaddch( board2screen_row(i), board2screen_col(j), board[i][j] );
-		}				
-	}
-	standend();
-}
+
 
 void start_new_game(char board[BOARD_SIZE][BOARD_SIZE])
 {
@@ -195,17 +193,12 @@ void start_new_game(char board[BOARD_SIZE][BOARD_SIZE])
 			y = screen2board_col(event.x);
 			if(clickedColor == POSSIBLE)
 			{
-				draw_board(board);
 				standend();
 				attron( COLOR_PAIR(currPlayer + 1) );
 				mvaddch( event.y, event.x, players[currPlayer] );
 				attroff( COLOR_PAIR(currPlayer + 1) );
-				//board[x][y]=players[currPlayer];
 				make_move(x, y, players[currPlayer], board);
-				
-				//mvprintw( 0, 0, "%d", screen2board_row(event.y));//debug
-				//mvprintw( 1, 0, "%d", screen2board_col(event.x));
-				
+				draw_board(board);				
 
 				currPlayer = (currPlayer + 1)%2;	
 				moves = find_possible_moves(possibleMoves, board, players[currPlayer]);
