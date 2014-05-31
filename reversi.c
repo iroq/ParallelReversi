@@ -142,6 +142,16 @@ void draw_board(char board[BOARD_SIZE][BOARD_SIZE])
 	init_pair(NONE, COLOR_BLUE, COLOR_BLUE);
 	init_pair(POSSIBLE, COLOR_BLACK, COLOR_RED);
 	wborder(stdscr, '|', '|', '-', '-', '+', '+', '+', '+');
+	
+	standend();
+	attron( COLOR_PAIR(NONE) );
+	for(i=0;i<BOARD_SIZE;i++)
+	{
+		for(j=0;j<BOARD_SIZE*2 - 1; j++)
+		{
+			mvaddch(i + row/2-BOARD_SIZE/2, j +col/2-BOARD_SIZE, ' ');
+		}
+	}
 	for(i=0;i<BOARD_SIZE;i++)
 	{
 		for(j=0;j<BOARD_SIZE; j++)
