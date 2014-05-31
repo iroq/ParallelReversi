@@ -1,6 +1,7 @@
 #include <ncurses.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <mpi.h>
 #include "utils.h"
 #define BOARD_SIZE 8
 #define KEY_ENTER_DEF 10
@@ -12,9 +13,11 @@
 #define board2screen_col(x) x*2+col/2-BOARD_SIZE
 #define screen2board_row(x) x - (row/2-BOARD_SIZE/2)
 #define screen2board_col(x) (x - (col/2-BOARD_SIZE))/2
+#define ABDEPTH 6
 
 void make_move(char board[BOARD_SIZE][BOARD_SIZE], int x, int y, char player);
 int find_possible_moves(char board[BOARD_SIZE][BOARD_SIZE], int moves[BOARD_SIZE * BOARD_SIZE][2], char currentPlayer);
+int alpha_beta_r(char board[BOARD_SIZE][BOARD_SIZE], int depth, int a, int b, char player, bool is_opp);
 
 //for ncurses
 int row,col;
@@ -67,7 +70,7 @@ int alpha_beta(char board[BOARD_SIZE][BOARD_SIZE], int pos_moves[BOARD_SIZE*BOAR
 		y=pos_moves[i][1];
 		copy_board(board, temp);
 		make_move(temp, x,y,player);
-		val=heur_sc(temp, player);
+		val=alpha_beta_r(board, ABDEPTH, -10000000, 10000000, player, false);
 		if(val>max)
 		{
 			max=val;
@@ -141,6 +144,16 @@ void draw_board(char board[BOARD_SIZE][BOARD_SIZE])
 	init_pair(NONE, COLOR_BLUE, COLOR_BLUE);
 	init_pair(POSSIBLE, COLOR_BLACK, COLOR_RED);
 	wborder(stdscr, '|', '|', '-', '-', '+', '+', '+', '+');
+	
+	standend();
+	attron( COLOR_PAIR(NONE) );
+	for(i=0;i<BOARD_SIZE;i++)
+	{
+		for(j=0;j<BOARD_SIZE*2 - 1; j++)
+		{
+			mvaddch(i + row/2-BOARD_SIZE/2, j +col/2-BOARD_SIZE, ' ');
+		}
+	}
 	for(i=0;i<BOARD_SIZE;i++)
 	{
 		for(j=0;j<BOARD_SIZE; j++)
@@ -308,6 +321,8 @@ void start_new_game(char board[BOARD_SIZE][BOARD_SIZE])
 		{
 			/* Player move */
 			usrInput = getch();
+			
+			
 			if(usrInput==KEY_MOUSE && getmouse(&event) == OK)
 			{
 				clickedColor = (mvinch(event.y, event.x) & A_COLOR) >> 8;
@@ -321,7 +336,6 @@ void start_new_game(char board[BOARD_SIZE][BOARD_SIZE])
 		}else
 		{
 			/* Omega move */
-			sleep(2);
 			int index=alpha_beta(board, possibleMoves, moves, players[currPlayer]);
 			x=possibleMoves[index][0];
 			y=possibleMoves[index][1];
@@ -422,13 +436,30 @@ void display_menu(char board[BOARD_SIZE][BOARD_SIZE])
     } while( currItem != 2 || usrInput != 10 );
 }
 
-int main()
-{	
+void master_work()
+{
 	char board[BOARD_SIZE][BOARD_SIZE];	
 	init_board(board);
     display_menu(board);    
     printw( "Thanks for playing!" );
     getch();
-    endwin();   
+    endwin();  
+}
+
+int main(int argc, char **argv)
+{	
+	int myrank;
+	MPI_Init(&argc, &argv);
+	MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
+	switch(myrank)
+	{
+		case 0:
+			master_work();
+			break;
+		default:
+		break;
+	}
+	
+	MPI_Finalize();
     return 0; 
 }
