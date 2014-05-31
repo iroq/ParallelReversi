@@ -1,5 +1,6 @@
 #include <ncurses.h>
 #include <stdlib.h>
+#include <unistd.h>
 #include "utils.h"
 #define BOARD_SIZE 8
 #define KEY_ENTER_DEF 10
@@ -12,6 +13,10 @@
 #define screen2board_row(x) x - (row/2-BOARD_SIZE/2)
 #define screen2board_col(x) (x - (col/2-BOARD_SIZE))/2
 
+void make_move(char board[BOARD_SIZE][BOARD_SIZE], int x, int y, char player);
+int find_possible_moves(char board[BOARD_SIZE][BOARD_SIZE], int moves[BOARD_SIZE * BOARD_SIZE][2], char currentPlayer);
+
+//for ncurses
 int row,col;
   
 int in_bounds(int x, int y)
@@ -30,6 +35,84 @@ char opponent(char player)
     default:
         return '-';
     }
+}
+
+void copy_board(char src[BOARD_SIZE][BOARD_SIZE], char dest[BOARD_SIZE][BOARD_SIZE])
+{
+	int i,j;
+	for(i=0; i<BOARD_SIZE; i++)
+		for(j=0; j<BOARD_SIZE; j++)
+			dest[i][j]=src[i][j];
+}
+
+int heur_sc(char board[BOARD_SIZE][BOARD_SIZE], char player)
+{
+	int i,j;
+	int count=0;
+	for(i=0;i<BOARD_SIZE;i++)
+		for(j=0;j<BOARD_SIZE;j++)
+			if(board[i][j]==player)
+				count++;
+	return count;
+}
+
+
+int alpha_beta(char board[BOARD_SIZE][BOARD_SIZE], int pos_moves[BOARD_SIZE*BOARD_SIZE][2], int moves_c, char player)
+{
+	int i, val, x, y,max=0, ret=0;
+	char temp[BOARD_SIZE][BOARD_SIZE];
+	for(i=0; i<moves_c; i++)
+	{
+		x=pos_moves[i][0];
+		y=pos_moves[i][1];
+		copy_board(board, temp);
+		make_move(temp, x,y,player);
+		val=heur_sc(temp, player);
+		if(val>max)
+		{
+			max=val;
+			ret=i;
+		}
+	}
+	return ret;
+}
+
+int alpha_beta_r(char board[BOARD_SIZE][BOARD_SIZE], int depth, int a, int b, char player, bool is_opp)
+{
+	if(depth==0)
+		return heur_sc(board, player);
+	int pos_moves[BOARD_SIZE*BOARD_SIZE][2];
+	int moves_c, i;
+	moves_c=find_possible_moves(board, pos_moves, player);
+	if(moves_c==0)
+		return heur_sc(board,player);
+	char temp[BOARD_SIZE][BOARD_SIZE];
+	if(is_opp)
+	{
+		//Opponent move
+		for(i=0;i<moves_c;i++)
+		{
+			copy_board(board, temp);
+			make_move(temp, pos_moves[i][0], pos_moves[i][1], player);
+			b=min(b, alpha_beta_r(temp, depth-1, a, b, opponent(player), !is_opp));
+			if(a>=b)
+				break;
+		}
+		return b;
+	}else
+	{
+		//Player move
+		for(i=0;i<moves_c;i++)
+		{
+			copy_board(board, temp);
+			make_move(temp, pos_moves[i][0], pos_moves[i][1], player);
+			a=max(a, alpha_beta_r(temp, depth-1, a, b, opponent(player), !is_opp));
+			if(a>=b)
+				break;
+		}
+		return a;
+	}
+
 }
 
 void count_stones(int *xcount, int *ocount, char board[BOARD_SIZE][BOARD_SIZE])
@@ -83,7 +166,7 @@ void draw_board(char board[BOARD_SIZE][BOARD_SIZE])
 	standend();
 }
 /* This function assumes that the move is legal. */
-void make_move(int x, int y, char player, char board[BOARD_SIZE][BOARD_SIZE])
+void make_move(char board[BOARD_SIZE][BOARD_SIZE], int x, int y, char player)
 {
 	int Ox=x, Oy=y;
 	int dx,dy;
@@ -120,7 +203,7 @@ void make_move(int x, int y, char player, char board[BOARD_SIZE][BOARD_SIZE])
 		}
 }
 	
-int is_legal_move(int x, int y, char board[BOARD_SIZE][BOARD_SIZE], char currentPlayer)
+int is_legal_move(char board[BOARD_SIZE][BOARD_SIZE], int x, int y, char currentPlayer)
 {
     int i, d, xx, yy;
     int sawOther, sawSelf;
@@ -158,14 +241,14 @@ int is_legal_move(int x, int y, char board[BOARD_SIZE][BOARD_SIZE], char current
     return 0;
 }
 
-int find_possible_moves(int moves[BOARD_SIZE * BOARD_SIZE][2], char board[BOARD_SIZE][BOARD_SIZE], char currentPlayer)
+int find_possible_moves(char board[BOARD_SIZE][BOARD_SIZE], int moves[BOARD_SIZE * BOARD_SIZE][2], char currentPlayer)
 {
     int i, j, counter = 0;
     for (i = 0; i < BOARD_SIZE; i++)
     {
         for (j = 0; j < BOARD_SIZE; j++)
         {
-            if (is_legal_move(i, j, board, currentPlayer))
+            if (is_legal_move(board, i, j, currentPlayer))
             {
 				//mvprintw(counter, 3, "[%d, %d]\n", i, j);
                 moves[counter][0] = i;
@@ -207,7 +290,7 @@ void start_new_game(char board[BOARD_SIZE][BOARD_SIZE])
 	mousemask(BUTTON1_CLICKED , NULL); 
 	noecho();
 	
-	moves = find_possible_moves(possibleMoves, board, players[currPlayer]);
+	moves = find_possible_moves(board, possibleMoves, players[currPlayer]);
 	draw_board(board);
 	for(i = 0; i < moves; i++)
 	{
@@ -220,43 +303,61 @@ void start_new_game(char board[BOARD_SIZE][BOARD_SIZE])
 	move_was_possible=TRUE;
 	while(turnCounter<BOARD_SIZE*BOARD_SIZE)
 	{
-		usrInput = getch();
-		if(usrInput==KEY_MOUSE && getmouse(&event) == OK)
+		bool move_made=false;
+		if(turnCounter%2==0)
 		{
-			clickedColor = (mvinch(event.y, event.x) & A_COLOR) >> 8;
-			x = screen2board_row(event.y);
-			y = screen2board_col(event.x);
-			if(clickedColor == POSSIBLE)
+			/* Player move */
+			usrInput = getch();
+			if(usrInput==KEY_MOUSE && getmouse(&event) == OK)
 			{
-				standend();
-				attron( COLOR_PAIR(currPlayer + 1) );
-				mvaddch( event.y, event.x, players[currPlayer] );
-				attroff( COLOR_PAIR(currPlayer + 1) );
-				make_move(x, y, players[currPlayer], board);
-				count_stones(&xcount, &ocount, board);
-				draw_board(board);
-				mvprintw(2,1, "X SCORE: %d", xcount);
-				mvprintw(3,1, "O SCORE: %d", ocount);			
+				clickedColor = (mvinch(event.y, event.x) & A_COLOR) >> 8;
+				if(clickedColor == POSSIBLE)
+				{
+					move_made=true;
+					x = screen2board_row(event.y);
+					y = screen2board_col(event.x);
+				}		
+			}	
+		}else
+		{
+			/* Omega move */
+			sleep(2);
+			int index=alpha_beta(board, possibleMoves, moves, players[currPlayer]);
+			x=possibleMoves[index][0];
+			y=possibleMoves[index][1];
+			move_made=true;
+		}
+		if(move_made)
+		{
+			standend();
+			attron( COLOR_PAIR(currPlayer + 1) );
+			mvaddch( event.y, event.x, players[currPlayer] );
+			attroff( COLOR_PAIR(currPlayer + 1) );
+			make_move(board, x, y, players[currPlayer]);
+			count_stones(&xcount, &ocount, board);
+			draw_board(board);
+			mvprintw(2,1, "X SCORE: %d", xcount);
+			mvprintw(3,1, "O SCORE: %d", ocount);			
 
-				currPlayer = (currPlayer + 1)%2;	
-				moves = find_possible_moves(possibleMoves, board, players[currPlayer]);
-				if(moves==0)
-				{
-					if(!move_was_possible)
-						break;
-					else
-						move_was_possible=FALSE;
-				}
-					
-				for(i = 0; i < moves; i++)
-				{
-					attron( COLOR_PAIR(POSSIBLE) );
-					mvaddch( board2screen_row(possibleMoves[i][0]), board2screen_col(possibleMoves[i][1]), '-');
-					attroff( COLOR_PAIR(POSSIBLE) );
-				}
-				mvprintw( 1, 1, "PLAYER: %c", players[currPlayer]);
-				turnCounter++;			
-			}			
+			currPlayer = (currPlayer + 1)%2;	
+			moves = find_possible_moves(board, possibleMoves, players[currPlayer]);
+			if(moves==0)
+			{
+				if(!move_was_possible)
+					break;
+				else
+					move_was_possible=FALSE;
+			}
+				
+			for(i = 0; i < moves; i++)
+			{
+				attron( COLOR_PAIR(POSSIBLE) );
+				mvaddch( board2screen_row(possibleMoves[i][0]), board2screen_col(possibleMoves[i][1]), '-');
+				attroff( COLOR_PAIR(POSSIBLE) );
+			}
+			mvprintw( 1, 1, "PLAYER: %c", players[currPlayer]);
+			refresh();
+			turnCounter++;			
 		}
 	}
 	clear();
