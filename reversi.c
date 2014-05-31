@@ -44,8 +44,7 @@ void count_stones(int *xcount, int *ocount, char board[BOARD_SIZE][BOARD_SIZE])
 				(*xcount)++;
 			else if(board[i][j]=='O')
 				(*ocount)++;
-		}
-	
+		}	
 }
 
 void draw_board(char board[BOARD_SIZE][BOARD_SIZE])
@@ -169,8 +168,8 @@ int find_possible_moves(int moves[BOARD_SIZE * BOARD_SIZE][2], char board[BOARD_
             if (is_legal_move(i, j, board, currentPlayer))
             {
 				//mvprintw(counter, 3, "[%d, %d]\n", i, j);
-                moves[counter][0] = board2screen_row(i);
-                moves[counter][1] = board2screen_col(j);
+                moves[counter][0] = i;
+                moves[counter][1] = j;
                 counter++;
             }
         }
@@ -213,7 +212,7 @@ void start_new_game(char board[BOARD_SIZE][BOARD_SIZE])
 	for(i = 0; i < moves; i++)
 	{
 		attron( COLOR_PAIR(POSSIBLE) );
-		mvaddch( possibleMoves[i][0], possibleMoves[i][1], '-');
+		mvaddch( board2screen_row(possibleMoves[i][0]), board2screen_col(possibleMoves[i][1]), '-');
 		attroff( COLOR_PAIR(POSSIBLE) );
 	}
 	mvprintw( 1, 1, "PLAYER: %c", players[currPlayer]);
@@ -252,7 +251,7 @@ void start_new_game(char board[BOARD_SIZE][BOARD_SIZE])
 				for(i = 0; i < moves; i++)
 				{
 					attron( COLOR_PAIR(POSSIBLE) );
-					mvaddch( possibleMoves[i][0], possibleMoves[i][1], '-');
+					mvaddch( board2screen_row(possibleMoves[i][0]), board2screen_col(possibleMoves[i][1]), '-');
 					attroff( COLOR_PAIR(POSSIBLE) );
 				}
 				mvprintw( 1, 1, "PLAYER: %c", players[currPlayer]);
