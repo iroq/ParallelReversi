@@ -15,6 +15,7 @@
 
 void make_move(char board[BOARD_SIZE][BOARD_SIZE], int x, int y, char player);
 int find_possible_moves(char board[BOARD_SIZE][BOARD_SIZE], int moves[BOARD_SIZE * BOARD_SIZE][2], char currentPlayer);
+int alpha_beta_r(char board[BOARD_SIZE][BOARD_SIZE], int depth, int a, int b, char player, bool is_opp);
 
 //for ncurses
 int row,col;
@@ -67,7 +68,7 @@ int alpha_beta(char board[BOARD_SIZE][BOARD_SIZE], int pos_moves[BOARD_SIZE*BOAR
 		y=pos_moves[i][1];
 		copy_board(board, temp);
 		make_move(temp, x,y,player);
-		val=heur_sc(temp, player);
+		val=alpha_beta_r(board, 6, -10000000, 10000000, player, false);
 		if(val>max)
 		{
 			max=val;
@@ -321,7 +322,6 @@ void start_new_game(char board[BOARD_SIZE][BOARD_SIZE])
 		}else
 		{
 			/* Omega move */
-			sleep(2);
 			int index=alpha_beta(board, possibleMoves, moves, players[currPlayer]);
 			x=possibleMoves[index][0];
 			y=possibleMoves[index][1];
