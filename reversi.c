@@ -57,6 +57,49 @@ int heur_sc(char board[BOARD_SIZE][BOARD_SIZE], char player)
 	return count;
 }
 
+int heur_mob(char board[BOARD_SIZE][BOARD_SIZE], char player)
+{
+	int i, j, k, l;
+	// mobility of the player
+	int mob_pl = find_possible_moves(board, NULL, player);
+	// potential mobility of the player
+	int pot_mob_pl;
+	// potential mobility of the opponent
+	int pot_mob_opp;
+	int opp_neighbour, pl_neighbour;
+
+	for (i = 0; i < BOARD_SIZE; i++)
+		for (j = 0; j < BOARD_SIZE; j++)
+		{
+			mvprintw(5, 5, "[%d, %d]\n", i, j);
+			// check if the slot is next to at least one disk belonging to the player/opponent
+			if (board[i][j] == '-')
+			{
+				opp_neighbour = pl_neighbour = 0;
+				for (k = i - 1; k <= i + 1; k++)
+				{
+					if (opp_neighbour && pl_neighbour)
+						break;
+					for (l = j - 1; l <= j + 1; l++)
+					{
+						if (l < 0 || l >= BOARD_SIZE || k < 0 || k >= BOARD_SIZE)
+							continue;
+						if (opp_neighbour && pl_neighbour)
+							break;
+						if (!pl_neighbour && board[k][l] == opponent(player))
+							pl_neighbour = 1;
+						if (!opp_neighbour && board[k][l] == player)
+							opp_neighbour = 1;
+					}
+				}
+				if (opp_neighbour)
+					pot_mob_opp++;
+				if (pl_neighbour)
+					pot_mob_pl++;
+			}
+		}
+	return mob_pl + pot_mob_pl - pot_mob_opp;	
+}
 
 int alpha_beta(char board[BOARD_SIZE][BOARD_SIZE], int pos_moves[BOARD_SIZE*BOARD_SIZE][2], int moves_c, char player)
 {
@@ -81,12 +124,12 @@ int alpha_beta(char board[BOARD_SIZE][BOARD_SIZE], int pos_moves[BOARD_SIZE*BOAR
 int alpha_beta_r(char board[BOARD_SIZE][BOARD_SIZE], int depth, int a, int b, char player, bool is_opp)
 {
 	if(depth==0)
-		return heur_sc(board, player);
+		return heur_mob(board, player);
 	int pos_moves[BOARD_SIZE*BOARD_SIZE][2];
 	int moves_c, i;
 	moves_c=find_possible_moves(board, pos_moves, player);
 	if(moves_c==0)
-		return heur_sc(board,player);
+		return heur_mob(board,player);
 	char temp[BOARD_SIZE][BOARD_SIZE];
 	if(is_opp)
 	{
@@ -262,8 +305,11 @@ int find_possible_moves(char board[BOARD_SIZE][BOARD_SIZE], int moves[BOARD_SIZE
             if (is_legal_move(board, i, j, currentPlayer))
             {
 				//mvprintw(counter, 3, "[%d, %d]\n", i, j);
-                moves[counter][0] = i;
-                moves[counter][1] = j;
+				if (NULL != moves)
+				{
+		            moves[counter][0] = i;
+		            moves[counter][1] = j;
+				}
                 counter++;
             }
         }
