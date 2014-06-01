@@ -4,6 +4,8 @@
 #include <mpi.h>
 #include <signal.h>
 #include <string.h>
+#include <limits.h>
+#include <stdarg.h>
 #include "utils.h"
 #define BOARD_SIZE 8
 #define KEY_ENTER_DEF 10
@@ -15,7 +17,7 @@
 #define board2screen_col(x) x*2+col/2-BOARD_SIZE
 #define screen2board_row(x) x - (row/2-BOARD_SIZE/2)
 #define screen2board_col(x) (x - (col/2-BOARD_SIZE))/2
-#define ABDEPTH 9
+#define ABDEPTH 6
 
 typedef struct data_
 {
@@ -39,7 +41,7 @@ int alpha_beta_r(char board[BOARD_SIZE][BOARD_SIZE], int depth, int a, int b, ch
 int row,col;
 MPI_Datatype mpi_msg_type;
 MPI_Datatype mpi_slmsg_type;
-  
+ 
 int in_bounds(int x, int y)
 {
     return (x >= 0 && y >= 0 && x < BOARD_SIZE && y < BOARD_SIZE) ? 1 : 0;
@@ -103,16 +105,22 @@ void create_struct()
     MPI_Type_commit(&mpi_slmsg_type);
 }
 
-void print_log(char *filename, char *text)
+void print_log(char *name, const char *format, ... )
 {
-	FILE *f = fopen(filename, "a+");
+	va_list arglist;
+	
+	char buf[50];
+	sprintf(buf, "%s.txt", name);
+	FILE *f = fopen(buf, "a+");
 	if (f == NULL)
 	{
 	    printf("Error opening file!\n");
 	    exit(1);
 	}
-	
-	fprintf(f, "[%d] %s\n",getpid(), text);
+	fprintf(f, "[%d]: ", getpid());
+	va_start(arglist, format);
+	vfprintf(f, format, arglist);
+	va_end(arglist);
 	fclose(f);
 }
 
@@ -122,7 +130,6 @@ int alpha_beta(char board[BOARD_SIZE][BOARD_SIZE], int pos_moves[BOARD_SIZE*BOAR
 	int rank_c;
 	data msg;
 	sldata slmsg;
-	char filename[10], text[50];
 	MPI_Status status;
 	MPI_Comm_size(MPI_COMM_WORLD, &rank_c); 
 	for(i=0; i<moves_c; i++)
@@ -139,9 +146,7 @@ int alpha_beta(char board[BOARD_SIZE][BOARD_SIZE], int pos_moves[BOARD_SIZE*BOAR
 	for(i=0; i<moves_c; i++)
 	{
 		MPI_Recv((void*)&slmsg, sizeof(sldata), mpi_slmsg_type, MPI_ANY_SOURCE, 0, MPI_COMM_WORLD, &status);
-		sprintf(filename, "master.txt"); 
-		sprintf(text, "Received message from %d, retval: %d, index: %d\n",status.MPI_SOURCE, slmsg.ret_val, slmsg.index);
-		print_log(filename, text);
+		print_log("master", "Received message from %d, retval: %d, index: %d\n",status.MPI_SOURCE, slmsg.ret_val, slmsg.index);
 		if(slmsg.ret_val > max)
 		{
 			max=slmsg.ret_val;
@@ -187,6 +192,121 @@ int alpha_beta_r(char board[BOARD_SIZE][BOARD_SIZE], int depth, int a, int b, ch
 		return a;
 	}
 
+}
+
+int alpha_beta_pvs_r(char board[BOARD_SIZE][BOARD_SIZE], int depth, int a, int b, char player)
+{
+	if(depth==0)
+		return heur_sc(board, player);
+	
+	int pos_moves[BOARD_SIZE*BOARD_SIZE][2];
+	int moves_c, i,score;
+	moves_c=find_possible_moves(board, pos_moves, player);
+	if(moves_c==0)
+		return heur_sc(board, player);
+		
+	char temp[BOARD_SIZE][BOARD_SIZE];
+	for(i=0; i<moves_c; i++)
+	{
+		copy_board(board, temp);
+		make_move(temp, pos_moves[i][0], pos_moves[i][1], player);
+		score=-alpha_beta_pvs_r(temp, depth-1, -b, -a, opponent(player));
+		if(score>b)
+		{
+			print_log("test", "Cutoff! Depth: %d, Alpha: %d, Beta: %d\n", depth, a, b);
+			return b;
+		}
+		if(score>a)
+			a=score;
+	}
+	return a;
+}
+
+int pv_split(char board[BOARD_SIZE][BOARD_SIZE], int depth, int a, int b, char player)
+{
+	if(depth==0)
+		return heur_sc(board, player);
+	int pos_moves[BOARD_SIZE*BOARD_SIZE][2];
+	int moves_c, i, score;
+	moves_c=find_possible_moves(board, pos_moves, player);
+	if(moves_c==0)
+		return heur_sc(board,player);
+	char temp[BOARD_SIZE][BOARD_SIZE];
+	int rank_c;
+	data msg;
+	sldata slmsg;
+	MPI_Status status;
+	MPI_Comm_size(MPI_COMM_WORLD, &rank_c); 
+	
+	copy_board(board, temp);
+	make_move(temp, pos_moves[0][0], pos_moves[0][1], player);
+	score=pv_split(temp, depth-1, a, b, opponent(player));
+	if(score>b)
+		return b;
+	if(score>a)
+		a=score;
+	
+	//Begin parallel loop
+	for(i=1; i<moves_c; i++)
+	{
+		copy_board(board, msg.board);
+		make_move(msg.board, pos_moves[i][0], pos_moves[i][1], player);
+		msg.player = player;
+		msg.depth = depth-1;
+		msg.index = i;
+		MPI_Send(&msg, sizeof(data), mpi_msg_type, (i % (rank_c-1))+1, 0, MPI_COMM_WORLD);		
+	}// End parallel loop
+	for(i=1; i<moves_c; i++)
+	{
+		MPI_Recv((void*)&slmsg, sizeof(sldata), mpi_slmsg_type, MPI_ANY_SOURCE, 0, MPI_COMM_WORLD, &status);
+		//score=alpha_beta_pvs_r(temp, depth-1, a, b, opponent(player));
+		if(slmsg.ret_val>b)
+			return b;
+		if(slmsg.ret_val>a)
+			a=slmsg.ret_val;
+	}	
+	return a;
+}
+
+int pv_split_master(char board[BOARD_SIZE][BOARD_SIZE], int pos_moves[BOARD_SIZE*BOARD_SIZE][2], int moves_c, char player)
+{
+	char temp[BOARD_SIZE][BOARD_SIZE];
+	int i, score,a=INT_MIN, b=INT_MAX,index;
+	int rank_c;
+	data msg;
+	sldata slmsg;
+	MPI_Status status;
+	MPI_Comm_size(MPI_COMM_WORLD, &rank_c); 
+	
+	copy_board(board, temp);
+	make_move(temp, pos_moves[0][0], pos_moves[0][1], player);
+	score=pv_split(temp, ABDEPTH-1, a, b, opponent(player));
+	a=score;
+	index=0;
+	
+	//Begin parallel loop
+	for(i=1; i<moves_c; i++)
+	{
+		copy_board(board, msg.board);
+		make_move(msg.board, pos_moves[i][0], pos_moves[i][1], player);
+		score=alpha_beta_pvs_r(temp, ABDEPTH-1, a, b, opponent(player));
+		msg.player = player;
+		msg.depth = ABDEPTH-1;
+		msg.index = i;
+		MPI_Send(&msg, sizeof(data), mpi_msg_type, (i % (rank_c-1))+1, 0, MPI_COMM_WORLD);	
+	}// End parallel loop
+
+	for(i=1; i<moves_c; i++)
+	{
+		MPI_Recv((void*)&slmsg, sizeof(sldata), mpi_slmsg_type, MPI_ANY_SOURCE, 0, MPI_COMM_WORLD, &status);
+		//score=alpha_beta_pvs_r(temp, depth-1, a, b, opponent(player));
+		if(slmsg.ret_val>a)
+		{
+			a=slmsg.ret_val;
+			index=slmsg.index;
+		}
+	}	
+	return index;
 }
 
 void count_stones(int *xcount, int *ocount, char board[BOARD_SIZE][BOARD_SIZE])
@@ -365,16 +485,17 @@ void init_board(char board[BOARD_SIZE][BOARD_SIZE])
 
 void start_new_game(char board[BOARD_SIZE][BOARD_SIZE])
 {
-	int i, usrInput, currPlayer =0, turnCounter = 4, possibleMoves[BOARD_SIZE * BOARD_SIZE][2], moves, x, y;
+	int i, usrInput, turnCounter = 4, possibleMoves[BOARD_SIZE * BOARD_SIZE][2], moves, x, y;
 	int xcount, ocount, move_was_possible;
 	short clickedColor;	
-	char players[] = {'O', 'X'};
+	//char players[] = {'O', 'X'};
+	char currPlayer = 'O';
 	MEVENT event;
 	init_board(board);
 	mousemask(BUTTON1_CLICKED , NULL); 
 	noecho();
 	
-	moves = find_possible_moves(board, possibleMoves, players[currPlayer]);
+	moves = find_possible_moves(board, possibleMoves, currPlayer);
 	draw_board(board);
 	for(i = 0; i < moves; i++)
 	{
@@ -382,7 +503,7 @@ void start_new_game(char board[BOARD_SIZE][BOARD_SIZE])
 		mvaddch( board2screen_row(possibleMoves[i][0]), board2screen_col(possibleMoves[i][1]), '-');
 		attroff( COLOR_PAIR(POSSIBLE) );
 	}
-	mvprintw( 1, 1, "PLAYER: %c", players[currPlayer]);
+	mvprintw( 1, 1, "PLAYER: %c", currPlayer);
 
 	move_was_possible=TRUE;
 	while(turnCounter<BOARD_SIZE*BOARD_SIZE)
@@ -407,7 +528,7 @@ void start_new_game(char board[BOARD_SIZE][BOARD_SIZE])
 		}else
 		{
 			/* Omega move */
-			int index=alpha_beta(board, possibleMoves, moves, players[currPlayer]);
+			int index=pv_split_master(board, possibleMoves, moves, currPlayer);
 			x=possibleMoves[index][0];
 			y=possibleMoves[index][1];
 			move_made=true;
@@ -415,24 +536,25 @@ void start_new_game(char board[BOARD_SIZE][BOARD_SIZE])
 		if(move_made)
 		{
 			standend();
-			attron( COLOR_PAIR(currPlayer + 1) );
-			mvaddch( event.y, event.x, players[currPlayer] );
-			attroff( COLOR_PAIR(currPlayer + 1) );
-			make_move(board, x, y, players[currPlayer]);
+			attron( COLOR_PAIR(currPlayer == '0' ?  WHITE : BLACK) );
+			mvaddch( event.y, event.x, currPlayer );
+			attroff( COLOR_PAIR(currPlayer == '0' ?  WHITE : BLACK) );
+			make_move(board, x, y, currPlayer);
 			count_stones(&xcount, &ocount, board);
 			draw_board(board);
 			mvprintw(2,1, "X SCORE: %d", xcount);
 			mvprintw(3,1, "O SCORE: %d", ocount);			
 
-			currPlayer = (currPlayer + 1)%2;	
-			moves = find_possible_moves(board, possibleMoves, players[currPlayer]);
+			currPlayer = opponent(currPlayer);	
+			moves = find_possible_moves(board, possibleMoves, currPlayer);
 			if(moves==0)
 			{
+				currPlayer = opponent(currPlayer);
 				if(!move_was_possible)
-					break;
+					break;					
 				else
-					move_was_possible=FALSE;
-			}
+					move_was_possible = false;
+			}				
 				
 			for(i = 0; i < moves; i++)
 			{
@@ -440,16 +562,26 @@ void start_new_game(char board[BOARD_SIZE][BOARD_SIZE])
 				mvaddch( board2screen_row(possibleMoves[i][0]), board2screen_col(possibleMoves[i][1]), '-');
 				attroff( COLOR_PAIR(POSSIBLE) );
 			}
-			mvprintw( 1, 1, "PLAYER: %c", players[currPlayer]);
+			mvprintw( 1, 1, "PLAYER: %c", currPlayer);
 			refresh();
 			turnCounter++;			
 		}
 	}
 	clear();
+	print_log("master", "Loop ended! Turn counter: %d\n", turnCounter);
 	if(xcount==ocount)
+	{
 		mvprintw(row/2, (col/2)-2, "TIE!");
+		print_log("master", "Printing TIE\n");
+	}
 	else
+	{
 		mvprintw(row/2, (col/2)-5, "PLAYER: %c WON!", (xcount<ocount)?'O':'X');
+		print_log("master", "Printing PLAYER: %c WON!\n",(xcount<ocount)?'O':'X');
+		
+	}
+	refresh();
+	getch();
 	getch();
 	return;
 }
@@ -521,22 +653,17 @@ void slave_work(int myrank)
 {
 	data buf;
 	sldata slbuf;
-	char filename[10], text[50];
+	char filename[10];
+	sprintf(filename, "%d",myrank); 
 	MPI_Status status;
 	while(true)
 	{		
 		MPI_Recv((void*)&buf, sizeof(data), mpi_msg_type, 0, 0, MPI_COMM_WORLD, &status);
-		sprintf(filename, "%d.txt",myrank); 
-		sprintf(text, "Received message, depth: %d", buf.depth);
-		print_log(filename, text);
-		
-		slbuf.ret_val=alpha_beta_r(buf.board, buf.depth, -10000000, 10000000, buf.player, false);
+		print_log(filename, "Message received");
+		slbuf.ret_val=alpha_beta_pvs_r(buf.board, buf.depth, INT_MIN, INT_MAX, buf.player);
 		slbuf.index = buf.index;
 		MPI_Send(&slbuf, sizeof(sldata), mpi_slmsg_type, 0, 0, MPI_COMM_WORLD);
-		
-		sprintf(filename, "%d.txt",myrank); 
-		sprintf(text, "Message sent with value %d", slbuf.ret_val);
-		print_log(filename, text);
+		print_log(filename, "Message sent, value: %d\n", slbuf.ret_val);
 	}
 }
 int main(int argc, char **argv)
