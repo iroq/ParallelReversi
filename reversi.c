@@ -13,6 +13,8 @@
 #define screen2board_row(x) x - (row/2-BOARD_SIZE/2)
 #define screen2board_col(x) (x - (col/2-BOARD_SIZE))/2
 
+#define CORNER_WEIGHT 2
+
 void make_move(char board[BOARD_SIZE][BOARD_SIZE], int x, int y, char player);
 int find_possible_moves(char board[BOARD_SIZE][BOARD_SIZE], int moves[BOARD_SIZE * BOARD_SIZE][2], char currentPlayer);
 int alpha_beta_r(char board[BOARD_SIZE][BOARD_SIZE], int depth, int a, int b, char player, bool is_opp);
@@ -57,50 +59,6 @@ int heur_sc(char board[BOARD_SIZE][BOARD_SIZE], char player)
 	return count;
 }
 
-int heur_mob(char board[BOARD_SIZE][BOARD_SIZE], char player)
-{
-	int i, j, k, l;
-	// mobility of the player
-	int mob_pl = find_possible_moves(board, NULL, player);
-	// potential mobility of the player
-	int pot_mob_pl;
-	// potential mobility of the opponent
-	int pot_mob_opp;
-	int opp_neighbour, pl_neighbour;
-
-	for (i = 0; i < BOARD_SIZE; i++)
-		for (j = 0; j < BOARD_SIZE; j++)
-		{
-			mvprintw(5, 5, "[%d, %d]\n", i, j);
-			// check if the slot is next to at least one disk belonging to the player/opponent
-			if (board[i][j] == '-')
-			{
-				opp_neighbour = pl_neighbour = 0;
-				for (k = i - 1; k <= i + 1; k++)
-				{
-					if (opp_neighbour && pl_neighbour)
-						break;
-					for (l = j - 1; l <= j + 1; l++)
-					{
-						if (l < 0 || l >= BOARD_SIZE || k < 0 || k >= BOARD_SIZE)
-							continue;
-						if (opp_neighbour && pl_neighbour)
-							break;
-						if (!pl_neighbour && board[k][l] == opponent(player))
-							pl_neighbour = 1;
-						if (!opp_neighbour && board[k][l] == player)
-							opp_neighbour = 1;
-					}
-				}
-				if (opp_neighbour)
-					pot_mob_opp++;
-				if (pl_neighbour)
-					pot_mob_pl++;
-			}
-		}
-	return mob_pl + pot_mob_pl - pot_mob_opp;	
-}
-
 int isCorner(int i, int j)
 {
 	return ((i == 0 && j == 0)
@@ -109,9 +67,8 @@ int isCorner(int i, int j)
 			|| (i == BOARD_SIZE - 1 && j == BOARD_SIZE - 1));
 }
 
-int heur_mob_cor(char board[BOARD_SIZE][BOARD_SIZE], char player)
-{
-	int corner_weight = 4;
+int mobility(char board[BOARD_SIZE][BOARD_SIZE], char player, int corner_weight, int countCorners)
+{	
 	int result = 0;
 	int i, j, k, l;
 	// mobility of the player
@@ -125,7 +82,6 @@ int heur_mob_cor(char board[BOARD_SIZE][BOARD_SIZE], char player)
 	for (i = 0; i < BOARD_SIZE; i++)
 		for (j = 0; j < BOARD_SIZE; j++)
 		{
-			mvprintw(5, 5, "[%d, %d]\n", i, j);
 			// check if the slot is next to at least one disk belonging to the player/opponent
 			if (board[i][j] == '-')
 			{
@@ -147,30 +103,78 @@ int heur_mob_cor(char board[BOARD_SIZE][BOARD_SIZE], char player)
 					}
 				}
 				if (opp_neighbour)
-					pot_mob_opp += isCorner(i, j) ? corner_weight : 1;
+					pot_mob_opp += (isCorner(i, j) && countCorners) ? corner_weight : 1;
 				if (pl_neighbour)
-					pot_mob_pl += isCorner(i, j) ? corner_weight : 1;
+					pot_mob_pl += (isCorner(i, j) && countCorners) ? corner_weight : 1;
 			}
 		}
 	result = mob_pl + pot_mob_pl - pot_mob_opp;	
 
-	if (board[0][BOARD_SIZE - 1] == player)
-		result += corner_weight;
-	if (board[0][BOARD_SIZE - 1] == opponent(player))
-		result -= corner_weight;
-	if (board[0][0] == player)
-		result += corner_weight;
-	if (board[0][0] == opponent(player))
-		result -= corner_weight;
-	if (board[BOARD_SIZE - 1][BOARD_SIZE - 1] == player)
-		result += corner_weight;
-	if (board[BOARD_SIZE - 1][BOARD_SIZE - 1] == opponent(player))
-		result -= corner_weight;
-	if (board[BOARD_SIZE - 1][0] == player)
-		result += corner_weight;
-	if (board[BOARD_SIZE - 1][0] == opponent(player))
-		result -= corner_weight;
-			
+	if (countCorners)
+	{
+		if (board[0][BOARD_SIZE - 1] == player)
+			result += corner_weight;
+		if (board[0][BOARD_SIZE - 1] == opponent(player))
+			result -= corner_weight;
+		if (board[0][0] == player)
+			result += corner_weight;
+		if (board[0][0] == opponent(player))
+			result -= corner_weight;
+		if (board[BOARD_SIZE - 1][BOARD_SIZE - 1] == player)
+			result += corner_weight;
+		if (board[BOARD_SIZE - 1][BOARD_SIZE - 1] == opponent(player))
+			result -= corner_weight;
+		if (board[BOARD_SIZE - 1][0] == player)
+			result += corner_weight;
+		if (board[BOARD_SIZE - 1][0] == opponent(player))
+			result -= corner_weight;
+	}
+	
+	mvprintw(5, 3, "Mobility %c: [%d], potential: player %c: [%d], opponent %c: [%d]\n", player, mob_pl, player, pot_mob_pl, opponent(player), pot_mob_opp);
+	return result;
+}
+
+int heur_mob(char board[BOARD_SIZE][BOARD_SIZE], char player)
+{
+	int result = mobility(board, player, 1, 0);
+	mvprintw(6, 3, "Heuristics for %c: [%d]\n", player, result);
+	return result;
+}
+
+int heur_mob_cor(char board[BOARD_SIZE][BOARD_SIZE], char player)
+{
+	int result = mobility(board, player, CORNER_WEIGHT, 1);
+	mvprintw(6, 3, "Heuristics for %c: [%d]\n", player, result);
+	return result;
+}
+
+int heur_mob_cor_edg(char board[BOARD_SIZE][BOARD_SIZE], char player)
+{
+	int i;
+	int result = mobility(board, player, CORNER_WEIGHT, 1);
+	int player_edges = 0, opponent_edges = 0;
+	for (i = 0; i < BOARD_SIZE; i++)
+	{
+		if (board[i][0] == player)
+			player_edges++;
+		if (board[i][0] == opponent(player))
+			opponent_edges++;
+		if (board[i][BOARD_SIZE - 1] == player)
+			player_edges++;
+		if (board[i][BOARD_SIZE - 1] == opponent(player))
+			opponent_edges++;
+		if (board[0][i] == player)
+			player_edges++;
+		if (board[0][i] == opponent(player))
+			opponent_edges++;
+		if (board[BOARD_SIZE - 1][i] == player)
+			player_edges++;
+		if (board[BOARD_SIZE - 1][i] == opponent(player))
+			opponent_edges++;
+	}
+	result += player_edges - opponent_edges;
+	mvprintw(5, 3, "Edges: player %c: [%d], opponent %c: [%d]\n", player, player_edges, opponent(player), opponent_edges);
+	mvprintw(6, 3, "Heuristics for %c: [%d]\n", player, result);
 	return result;
 }
 
@@ -197,12 +201,12 @@ int alpha_beta(char board[BOARD_SIZE][BOARD_SIZE], int pos_moves[BOARD_SIZE*BOAR
 int alpha_beta_r(char board[BOARD_SIZE][BOARD_SIZE], int depth, int a, int b, char player, bool is_opp)
 {
 	if(depth==0)
-		return heur_mob(board, player);
+		return heur_mob_cor_edg(board, player);
 	int pos_moves[BOARD_SIZE*BOARD_SIZE][2];
 	int moves_c, i;
 	moves_c=find_possible_moves(board, pos_moves, player);
 	if(moves_c==0)
-		return heur_mob(board,player);
+		return heur_mob_cor_edg(board,player);
 	char temp[BOARD_SIZE][BOARD_SIZE];
 	if(is_opp)
 	{
@@ -451,6 +455,7 @@ void start_new_game(char board[BOARD_SIZE][BOARD_SIZE])
 		}else
 		{
 			/* Omega move */
+			sleep(2);
 			int index=alpha_beta(board, possibleMoves, moves, players[currPlayer]);
 			x=possibleMoves[index][0];
 			y=possibleMoves[index][1];
@@ -465,6 +470,7 @@ void start_new_game(char board[BOARD_SIZE][BOARD_SIZE])
 			make_move(board, x, y, players[currPlayer]);
 			count_stones(&xcount, &ocount, board);
 			draw_board(board);
+			heur_mob_cor_edg(board, players[currPlayer]);
 			mvprintw(2,1, "X SCORE: %d", xcount);
 			mvprintw(3,1, "O SCORE: %d", ocount);			
 
