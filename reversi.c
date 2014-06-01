@@ -148,41 +148,38 @@ int heur_mob_cor(char board[BOARD_SIZE][BOARD_SIZE], char player)
 	return result;
 }
 
-int heur_mob_cor_edg(char board[BOARD_SIZE][BOARD_SIZE], char player)
+int edges(char board[BOARD_SIZE][BOARD_SIZE], char player)
 {
 	int i;
-	int result = mobility(board, player, CORNER_WEIGHT, 1);
-	int player_edges = 0, opponent_edges = 0;
+	int player_edges = 0;
 	for (i = 0; i < BOARD_SIZE; i++)
 	{
 		if (board[i][0] == player)
 			player_edges++;
-		if (board[i][0] == opponent(player))
-			opponent_edges++;
 		if (board[i][BOARD_SIZE - 1] == player)
 			player_edges++;
-		if (board[i][BOARD_SIZE - 1] == opponent(player))
-			opponent_edges++;
 		if (board[0][i] == player)
 			player_edges++;
-		if (board[0][i] == opponent(player))
-			opponent_edges++;
 		if (board[BOARD_SIZE - 1][i] == player)
 			player_edges++;
-		if (board[BOARD_SIZE - 1][i] == opponent(player))
-			opponent_edges++;
 	}
+	return player_edges;
+}
+
+int heur_mob_cor_edg(char board[BOARD_SIZE][BOARD_SIZE], char player)
+{
+	int result = mobility(board, player, CORNER_WEIGHT, 1);
+	int player_edges = edges(board, player), opponent_edges = edges(board, opponent(player));
 	result += player_edges - opponent_edges;
 	mvprintw(5, 3, "Edges: player %c: [%d], opponent %c: [%d]\n", player, player_edges, opponent(player), opponent_edges);
 	mvprintw(6, 3, "Heuristics for %c: [%d]\n", player, result);
 	return result;
 }
 
-int heur_mob_cor_edg_st(char board[BOARD_SIZE][BOARD_SIZE], char player)
+int stability(char board[BOARD_SIZE][BOARD_SIZE], char player)
 {
 	int i;
-	int result = heur_mob_cor_edg(board, player);
-	int player_stable = 0, opponent_stable = 0;
+	int player_stable = 0;
 	// right
 	for (i = 0; i < BOARD_SIZE; i++)
 	{
@@ -193,22 +190,8 @@ int heur_mob_cor_edg_st(char board[BOARD_SIZE][BOARD_SIZE], char player)
 	}
 	for (i = 0; i < BOARD_SIZE; i++)
 	{
-		if (board[i][0] == opponent(player))
-			opponent_stable++;
-		else
-			break;
-	}
-	for (i = 0; i < BOARD_SIZE; i++)
-	{
 		if (board[i][BOARD_SIZE - 1] == player)
 			player_stable++;
-		else
-			break;
-	}
-	for (i = 0; i < BOARD_SIZE; i++)
-	{
-		if (board[i][BOARD_SIZE - 1] == opponent(player))
-			opponent_stable++;
 		else
 			break;
 	}
@@ -222,86 +205,99 @@ int heur_mob_cor_edg_st(char board[BOARD_SIZE][BOARD_SIZE], char player)
 	}
 	for (i = BOARD_SIZE - 1; i >= 0; i--)
 	{
-		if (board[i][0] == opponent(player))
-			opponent_stable++;
-		else
-			break;
-	}
-	for (i = BOARD_SIZE - 1; i >= 0; i--)
-	{
 		if (board[i][BOARD_SIZE - 1] == player)
 			player_stable++;
 		else
 			break;
 	}
-	for (i = BOARD_SIZE - 1; i >= 0; i--)
-	{
-		if (board[i][BOARD_SIZE - 1] == opponent(player))
-			opponent_stable++;
-		else
-			break;
-	}
 	// down
-	for (i = 0; i < BOARD_SIZE; i++)
+	for (i = 1; i < BOARD_SIZE; i++)
 	{
 		if (board[0][i] == player)
 			player_stable++;
 		else
 			break;
 	}
-	for (i = 0; i < BOARD_SIZE; i++)
-	{
-		if (board[0][i] == opponent(player))
-			opponent_stable++;
-		else
-			break;
-	}
-	for (i = 0; i < BOARD_SIZE; i++)
+	for (i = 1; i < BOARD_SIZE; i++)
 	{
 		if (board[BOARD_SIZE - 1][i] == player)
 			player_stable++;
-		else
-			break;
-	}
-	for (i = 0; i < BOARD_SIZE; i++)
-	{
-		if (board[BOARD_SIZE - 1][i] == opponent(player))
-			opponent_stable++;
 		else
 			break;
 	}
 	// up
-	for (i = BOARD_SIZE - 1; i >= 0; i--)
+	for (i = BOARD_SIZE - 2; i >= 0; i--)
 	{
 		if (board[0][i] == player)
 			player_stable++;
 		else
 			break;
 	}
-	for (i = BOARD_SIZE - 1; i >= 0; i--)
-	{
-		if (board[0][i] == opponent(player))
-			opponent_stable++;
-		else
-			break;
-	}
-	for (i = BOARD_SIZE - 1; i >= 0; i--)
+	for (i = BOARD_SIZE - 2; i >= 0; i--)
 	{
 		if (board[BOARD_SIZE - 1][i] == player)
 			player_stable++;
 		else
 			break;
 	}
-	for (i = BOARD_SIZE - 1; i >= 0; i--)
-	{
-		if (board[BOARD_SIZE - 1][i] == opponent(player))
-			opponent_stable++;
-		else
-			break;
-	}
+	return player_stable;
+}
+
+int heur_mob_cor_edg_st(char board[BOARD_SIZE][BOARD_SIZE], char player)
+{
+	int result = heur_mob_cor_edg(board, player);
+	int player_stable = stability(board, player), opponent_stable = stability(board, opponent(player));
 	result += player_stable - opponent_stable;
 	mvprintw(6, 3, "Stable: player %c: [%d], opponent %c: [%d]\n", player, player_stable, opponent(player), opponent_stable);
 	mvprintw(7, 3, "Heuristics for %c: [%d]\n", player, result);
+	return result;
+}
+
+void count_stones(int *xcount, int *ocount, char board[BOARD_SIZE][BOARD_SIZE])
+{
+	int i,j;
+	*xcount=0;
+	*ocount=0;
+	for(i=0;i<BOARD_SIZE;i++)
+		for(j=0;j<BOARD_SIZE;j++)
+		{
+			if(board[i][j]=='X')
+				(*xcount)++;
+			else if(board[i][j]=='O')
+				(*ocount)++;
+		}	
+}
+
+int heur_mob_cor_edg_st_time(char board[BOARD_SIZE][BOARD_SIZE], char player)
+{
+	int mob = mobility(board, player, CORNER_WEIGHT, 1);
+	int player_edges = edges(board, player), opponent_edges = edges(board, opponent(player));
+	int edges = player_edges - opponent_edges;
+	int player_stable = stability(board, player), opponent_stable = stability(board, opponent(player));
+	int stability = player_stable - opponent_stable;
+	int turn, xscore = 0, yscore = 0;
+	int result;
+	
+	count_stones(&xscore, &yscore, board);
+	turn = xscore + yscore;
+	
+	if (turn <= 20)
+	{
+		result = (int)(1.5f * (float)mob + edges + 0.5f * (float)stability);
+	}
+	else if (turn <= 40)
+	{
+		result = mob + edges + stability;
+	}
+	else
+	{
+		result = (int)(0.5f * (float)mob + edges + 1.5f * (float)stability);
+	}
+
+	mvprintw(5, 3, "Edges: player %c: [%d], opponent %c: [%d]\n", player, player_edges, opponent(player), opponent_edges);
+	mvprintw(6, 3, "Stable: player %c: [%d], opponent %c: [%d]\n", player, player_stable, opponent(player), opponent_stable);
+	mvprintw(7, 3, "Heuristics for %c: [%d]\n", player, result);
+
 	return result;
 }
 
@@ -315,7 +311,7 @@ int alpha_beta(char board[BOARD_SIZE][BOARD_SIZE], int pos_moves[BOARD_SIZE*BOAR
 		y=pos_moves[i][1];
 		copy_board(board, temp);
 		make_move(temp, x,y,player);
-		val=alpha_beta_r(board, 2, -10000000, 10000000, player, false);
+		val=alpha_beta_r(board, 6, -10000000, 10000000, player, false);
 		if(val>max)
 		{
 			max=val;
@@ -328,12 +324,12 @@ int alpha_beta(char board[BOARD_SIZE][BOARD_SIZE], int pos_moves[BOARD_SIZE*BOAR
 int alpha_beta_r(char board[BOARD_SIZE][BOARD_SIZE], int depth, int a, int b, char player, bool is_opp)
 {
 	if(depth==0)
-		return heur_mob_cor_edg_st(board, player);
+		return heur_mob_cor_edg_st_time(board, player);
 	int pos_moves[BOARD_SIZE*BOARD_SIZE][2];
 	int moves_c, i;
 	moves_c=find_possible_moves(board, pos_moves, player);
 	if(moves_c==0)
-		return heur_mob_cor_edg_st(board,player);
+		return heur_mob_cor_edg_st_time(board,player);
 	char temp[BOARD_SIZE][BOARD_SIZE];
 	if(is_opp)
 	{
@@ -361,21 +357,6 @@ int alpha_beta_r(char board[BOARD_SIZE][BOARD_SIZE], int depth, int a, int b, ch
 		return a;
 	}
 
-}
-
-void count_stones(int *xcount, int *ocount, char board[BOARD_SIZE][BOARD_SIZE])
-{
-	int i,j;
-	*xcount=0;
-	*ocount=0;
-	for(i=0;i<BOARD_SIZE;i++)
-		for(j=0;j<BOARD_SIZE;j++)
-		{
-			if(board[i][j]=='X')
-				(*xcount)++;
-			else if(board[i][j]=='O')
-				(*ocount)++;
-		}	
 }
 
 void draw_board(char board[BOARD_SIZE][BOARD_SIZE])
@@ -599,7 +580,7 @@ void start_new_game(char board[BOARD_SIZE][BOARD_SIZE])
 			count_stones(&xcount, &ocount, board);
 			draw_board(board);
 			// debug
-			heur_mob_cor_edg_st(board, players[currPlayer]);
+			heur_mob_cor_edg_st_time(board, players[currPlayer]);
 			mvprintw(2,1, "X SCORE: %d", xcount);
 			mvprintw(3,1, "O SCORE: %d", ocount);			
 
