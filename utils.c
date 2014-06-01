@@ -21,3 +21,8 @@ int max(int a, int b)
 {
     return (a>b)? a : b;
 }
+
+bool same_sign(int a, int b)
+{
+	return ((a>0&&b>0)||(a<0&&b<0))? true : false;
+}

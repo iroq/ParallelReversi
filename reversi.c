@@ -268,7 +268,6 @@ int alpha_beta(char board[BOARD_SIZE][BOARD_SIZE], int pos_moves[BOARD_SIZE*BOAR
 	for(i=0; i<moves_c; i++)
 	{
 		MPI_Recv((void*)&slmsg, sizeof(sldata), mpi_slmsg_type, MPI_ANY_SOURCE, 0, MPI_COMM_WORLD, &status);
-		print_log("master", "Received message from %d, retval: %d, index: %d\n",status.MPI_SOURCE, slmsg.ret_val, slmsg.index);
 		if(slmsg.ret_val > max)
 		{
 			max=slmsg.ret_val;
@@ -339,7 +338,6 @@ int alpha_beta_pvs_r(char board[BOARD_SIZE][BOARD_SIZE], int depth, int a, int b
 		score=-alpha_beta_pvs_r(temp, depth-1, -b, -a, opponent(player));
 		if(score>b)
 		{
-			print_log("test", "Cutoff! Depth: %d, Alpha: %d, Beta: %d\n", depth, a, b);
 			return b;
 		}
 		
@@ -348,16 +346,21 @@ int alpha_beta_pvs_r(char board[BOARD_SIZE][BOARD_SIZE], int depth, int a, int b
 		{
 			MPI_Recv(&a_recv, 1, MPI_INT, MPI_ANY_SOURCE, MPI_job_counter, MPI_COMM_WORLD, &stat);
 		}
-		if(probe && a_recv>score && a_recv > a)
+		if(probe && same_sign(a, a_recv) && a_recv>score && a_recv > a)
+		{
 			a=a_recv;
+		}
 		else if(score>a)
 		{
 			a=score;
-			for(j = 1; j < rank_c; j++)
+			if(depth%2==0)
 			{
-				if(myrank == j) 
-					continue;
-				MPI_Isend(&a,1, MPI_INT, j, MPI_job_counter, MPI_COMM_WORLD, &req);
+				for(j = 1; j < rank_c; j++)
+				{
+					if(myrank == j) 
+						continue;
+					MPI_Isend(&a,1, MPI_INT, j, MPI_job_counter, MPI_COMM_WORLD, &req);
+				}
 			}
 		}	
 	}
@@ -716,16 +719,13 @@ void start_new_game(char board[BOARD_SIZE][BOARD_SIZE])
 		}
 	}
 	clear();
-	print_log("master", "Loop ended! Turn counter: %d\n", turnCounter);
 	if(xcount==ocount)
 	{
 		mvprintw(row/2, (col/2)-2, "TIE!");
-		print_log("master", "Printing TIE\n");
 	}
 	else
 	{
 		mvprintw(row/2, (col/2)-5, "PLAYER: %c WON!", (xcount<ocount)?'O':'X');
-		print_log("master", "Printing PLAYER: %c WON!\n",(xcount<ocount)?'O':'X');
 		
 	}
 	refresh();
@@ -807,12 +807,10 @@ void slave_work()
 	while(true)
 	{		
 		MPI_Recv((void*)&buf, 1, mpi_msg_type, 0, 0, MPI_COMM_WORLD, &status);
-		print_log(filename, "Message received");
 		MPI_job_counter=buf.job_no;
 		slbuf.ret_val=alpha_beta_pvs_r(buf.board, buf.depth, INT_MIN, INT_MAX, buf.player);
 		slbuf.index = buf.index;
 		MPI_Send(&slbuf, 1, mpi_slmsg_type, 0, 0, MPI_COMM_WORLD);
-		print_log(filename, "Message sent, value: %d\n", slbuf.ret_val);
 	}
 }
 int main(int argc, char **argv)
