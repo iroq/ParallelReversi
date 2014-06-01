@@ -2,6 +2,8 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <mpi.h>
+#include <signal.h>
+#include <string.h>
 #include "utils.h"
 #define BOARD_SIZE 8
 #define KEY_ENTER_DEF 10
@@ -13,7 +15,21 @@
 #define board2screen_col(x) x*2+col/2-BOARD_SIZE
 #define screen2board_row(x) x - (row/2-BOARD_SIZE/2)
 #define screen2board_col(x) (x - (col/2-BOARD_SIZE))/2
-#define ABDEPTH 6
+#define ABDEPTH 9
+
+typedef struct data_
+{
+	char board[BOARD_SIZE][BOARD_SIZE];
+	char player;
+	int depth;
+	int index;
+} data;
+
+typedef struct sldata_
+{
+	int ret_val;
+	int index;
+} sldata;
 
 void make_move(char board[BOARD_SIZE][BOARD_SIZE], int x, int y, char player);
 int find_possible_moves(char board[BOARD_SIZE][BOARD_SIZE], int moves[BOARD_SIZE * BOARD_SIZE][2], char currentPlayer);
@@ -21,6 +37,8 @@ int alpha_beta_r(char board[BOARD_SIZE][BOARD_SIZE], int depth, int a, int b, ch
 
 //for ncurses
 int row,col;
+MPI_Datatype mpi_msg_type;
+MPI_Datatype mpi_slmsg_type;
   
 int in_bounds(int x, int y)
 {
@@ -59,22 +77,75 @@ int heur_sc(char board[BOARD_SIZE][BOARD_SIZE], char player)
 	return count;
 }
 
+void create_struct()
+{
+	const int nitems=4, nitems1 = 2;
+    int blocklengths[4] = {BOARD_SIZE * BOARD_SIZE,1,1,1};
+    int blocklengths1[2] = {1,1};
+    MPI_Datatype types[4] = {MPI_CHAR, MPI_CHAR, MPI_INT, MPI_INT};
+    MPI_Datatype types1[2] = {MPI_INT, MPI_INT};
+
+    MPI_Aint offsets[nitems];
+    MPI_Aint offsets1[nitems1];
+
+    offsets[0] = offsetof(data, board);
+    offsets[1] = offsetof(data, player);
+    offsets[2] = offsetof(data, depth);
+    offsets[3] = offsetof(data, index);
+    
+    offsets1[0] = offsetof(sldata, ret_val);
+    offsets1[1] = offsetof(sldata, index);
+
+    MPI_Type_create_struct(nitems, blocklengths, offsets, types, &mpi_msg_type);
+    MPI_Type_commit(&mpi_msg_type);
+    
+    MPI_Type_create_struct(nitems1, blocklengths1, offsets1, types1, &mpi_slmsg_type);
+    MPI_Type_commit(&mpi_slmsg_type);
+}
+
+void print_log(char *filename, char *text)
+{
+	FILE *f = fopen(filename, "a+");
+	if (f == NULL)
+	{
+	    printf("Error opening file!\n");
+	    exit(1);
+	}
+	
+	fprintf(f, "[%d] %s\n",getpid(), text);
+	fclose(f);
+}
 
 int alpha_beta(char board[BOARD_SIZE][BOARD_SIZE], int pos_moves[BOARD_SIZE*BOARD_SIZE][2], int moves_c, char player)
 {
-	int i, val, x, y,max=0, ret=0;
-	char temp[BOARD_SIZE][BOARD_SIZE];
+	int i, x, y,max=0, ret=0;
+	int rank_c;
+	data msg;
+	sldata slmsg;
+	char filename[10], text[50];
+	MPI_Status status;
+	MPI_Comm_size(MPI_COMM_WORLD, &rank_c); 
 	for(i=0; i<moves_c; i++)
 	{
 		x=pos_moves[i][0];
 		y=pos_moves[i][1];
-		copy_board(board, temp);
-		make_move(temp, x,y,player);
-		val=alpha_beta_r(board, ABDEPTH, -10000000, 10000000, player, false);
-		if(val>max)
+		copy_board(board, msg.board);
+		make_move(msg.board, x,y,player);
+		msg.player = player;
+		msg.depth = ABDEPTH;
+		msg.index = i;
+		MPI_Send(&msg, sizeof(data), mpi_msg_type, (i % (rank_c-1))+1, 0, MPI_COMM_WORLD);
+	}
+	for(i=0; i<moves_c; i++)
+	{
+		MPI_Recv((void*)&slmsg, sizeof(sldata), mpi_slmsg_type, MPI_ANY_SOURCE, 0, MPI_COMM_WORLD, &status);
+		sprintf(filename, "master.txt"); 
+		sprintf(text, "Received message from %d, retval: %d, index: %d\n",status.MPI_SOURCE, slmsg.ret_val, slmsg.index);
+		print_log(filename, text);
+		if(slmsg.ret_val > max)
 		{
-			max=val;
-			ret=i;
+			max=slmsg.ret_val;
+			ret=slmsg.index;
 		}
 	}
 	return ret;
@@ -446,20 +517,43 @@ void master_work()
     endwin();  
 }
 
+void slave_work(int myrank)
+{
+	data buf;
+	sldata slbuf;
+	char filename[10], text[50];
+	MPI_Status status;
+	while(true)
+	{		
+		MPI_Recv((void*)&buf, sizeof(data), mpi_msg_type, 0, 0, MPI_COMM_WORLD, &status);
+		sprintf(filename, "%d.txt",myrank); 
+		sprintf(text, "Received message, depth: %d", buf.depth);
+		print_log(filename, text);
+		
+		slbuf.ret_val=alpha_beta_r(buf.board, buf.depth, -10000000, 10000000, buf.player, false);
+		slbuf.index = buf.index;
+		MPI_Send(&slbuf, sizeof(sldata), mpi_slmsg_type, 0, 0, MPI_COMM_WORLD);
+		
+		sprintf(filename, "%d.txt",myrank); 
+		sprintf(text, "Message sent with value %d", slbuf.ret_val);
+		print_log(filename, text);
+	}
+}
 int main(int argc, char **argv)
 {	
 	int myrank;
 	MPI_Init(&argc, &argv);
 	MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
+	create_struct();
 	switch(myrank)
 	{
 		case 0:
 			master_work();
 			break;
 		default:
-		break;
+			slave_work(myrank);
+			break;
 	}
-	
 	MPI_Finalize();
     return 0; 
 }
