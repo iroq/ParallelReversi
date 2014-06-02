@@ -83,6 +83,7 @@ int heur_sc(char board[BOARD_SIZE][BOARD_SIZE], char player)
 		for(j=0;j<BOARD_SIZE;j++)
 			if(board[i][j]==player)
 				count++;
+	mvprintw(5, 3, "HS for %c: [%d]\n", player, count);
 	return count;
 }
 
@@ -164,14 +165,14 @@ int mobility(char board[BOARD_SIZE][BOARD_SIZE], char player, int corner_weight,
 int heur_mob(char board[BOARD_SIZE][BOARD_SIZE], char player)
 {
 	int result = mobility(board, player, 1, 0);
-	mvprintw(5, 3, "Heuristics for %c: [%d]\n", player, result);
+	mvprintw(5, 3, "HM for %c: [%d]\n", player, result);
 	return result;
 }
 
 int heur_mob_cor(char board[BOARD_SIZE][BOARD_SIZE], char player)
 {
 	int result = mobility(board, player, CORNER_WEIGHT, 1);
-	mvprintw(5, 3, "Heuristics for %c: [%d]\n", player, result);
+	mvprintw(5, 3, "HMC for %c: [%d]\n", player, result);
 	return result;
 }
 
@@ -199,7 +200,7 @@ int heur_mob_cor_edg(char board[BOARD_SIZE][BOARD_SIZE], char player)
 	int player_edges = edges(board, player), opponent_edges = edges(board, opponent(player));
 	result += player_edges - opponent_edges;
 	mvprintw(5, 3, "Edges: player %c: [%d], opponent %c: [%d]\n", player, player_edges, opponent(player), opponent_edges);
-	mvprintw(6, 3, "Heuristics for %c: [%d]\n", player, result);
+	mvprintw(6, 3, "HMCE for %c: [%d]\n", player, result);
 	return result;
 }
 
@@ -276,7 +277,7 @@ int heur_mob_cor_edg_st(char board[BOARD_SIZE][BOARD_SIZE], char player)
 	int player_stable = stability(board, player), opponent_stable = stability(board, opponent(player));
 	result += player_stable - opponent_stable;
 	mvprintw(6, 3, "Stable: player %c: [%d], opponent %c: [%d]\n", player, player_stable, opponent(player), opponent_stable);
-	mvprintw(7, 3, "Heuristics for %c: [%d]\n", player, result);
+	mvprintw(7, 3, "HMCES for %c: [%d]\n", player, result);
 	return result;
 }
 
@@ -323,7 +324,7 @@ int heur_mob_cor_edg_st_time(char board[BOARD_SIZE][BOARD_SIZE], char player)
 
 	mvprintw(5, 3, "Edges: player %c: [%d], opponent %c: [%d]\n", player, player_edges, opponent(player), opponent_edges);
 	mvprintw(6, 3, "Stable: player %c: [%d], opponent %c: [%d]\n", player, player_stable, opponent(player), opponent_stable);
-	mvprintw(7, 3, "Heuristics for %c: [%d]\n", player, result);
+	mvprintw(7, 3, "HMCEST for %c: [%d]\n", player, result);
 
 	return result;
 }
@@ -742,7 +743,7 @@ void start_new_game(char board[BOARD_SIZE][BOARD_SIZE])
 			count_stones(&xcount, &ocount, board);
 			draw_board(board);
 			// debug
-			heur_mob_cor_edg_st_time(board, currPlayer);
+			heuristics[heuristic](board, currPlayer);
 			mvprintw(2,1, "X SCORE: %d", xcount);
 			mvprintw(3,1, "O SCORE: %d", ocount);			
 
