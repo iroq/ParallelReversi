@@ -18,7 +18,6 @@
 #define screen2board_row(x) x - (row/2-BOARD_SIZE/2)
 #define screen2board_col(x) (x - (col/2-BOARD_SIZE))/2
 #define ABDEPTH 6
-#define HEURISTIC(board, player) heur_sc(board, player)
 #define CORNER_WEIGHT 10
 
 typedef struct data_
@@ -35,6 +34,8 @@ typedef struct sldata_
 	int ret_val;
 	int index;
 } sldata;
+
+typedef int (*function)(char board[BOARD_SIZE][BOARD_SIZE], char player);
 
 void make_move(char board[BOARD_SIZE][BOARD_SIZE], int x, int y, char player);
 int find_possible_moves(char board[BOARD_SIZE][BOARD_SIZE], int moves[BOARD_SIZE * BOARD_SIZE][2], char currentPlayer);
@@ -325,8 +326,6 @@ int heur_mob_cor_edg_st_time(char board[BOARD_SIZE][BOARD_SIZE], char player)
 	mvprintw(7, 3, "Heuristics for %c: [%d]\n", player, result);
 
 	return result;
-
-
 }
 
 void create_struct()
@@ -375,16 +374,20 @@ void print_log(char *name, const char *format, ... )
 	fclose(f);
 }
 
+int heuristic = 0;
+
+static function heuristics[6] = { heur_sc, heur_mob, heur_mob_cor, heur_mob_cor_edg, heur_mob_cor_edg_st, heur_mob_cor_edg_st_time };
+
 int alpha_beta_pvs_r(char board[BOARD_SIZE][BOARD_SIZE], int depth, int a, int b, char player)
 {
 	if(depth==0)
-		return HEURISTIC(board, player);
+		return heuristics[heuristic](board, player);
 	
 	int pos_moves[BOARD_SIZE*BOARD_SIZE][2];
 	int moves_c, i,score;
 	moves_c=find_possible_moves(board, pos_moves, player);
 	if(moves_c==0)
-		return HEURISTIC(board, player);
+		return heuristics[heuristic](board, player);
 	int probe=0, rank_c, j;
 	MPI_Status stat;
 	MPI_Request req;
@@ -430,12 +433,12 @@ int alpha_beta_pvs_r(char board[BOARD_SIZE][BOARD_SIZE], int depth, int a, int b
 int pv_split(char board[BOARD_SIZE][BOARD_SIZE], int depth, int a, int b, char player)
 {
 	if(depth==0)
-		return HEURISTIC(board, player);
+		return heuristics[heuristic](board, player);
 	int pos_moves[BOARD_SIZE*BOARD_SIZE][2];
 	int moves_c, i, score;
 	moves_c=find_possible_moves(board, pos_moves, player);
 	if(moves_c==0)
-		return HEURISTIC(board,player);
+		return heuristics[heuristic](board,player);
 	char temp[BOARD_SIZE][BOARD_SIZE];
 	int rank_c;
 	data msg;
