@@ -376,8 +376,8 @@ void print_log(char *name, const char *format, ... )
 }
 
 
-int multiplayer = 0;
-// if multiplayer => heur_x == heur_o
+int single_player = 1;
+// if single_player => should heur_x == heur_o
 int heur_x = 0;
 int heur_o = 0;
 
@@ -714,12 +714,11 @@ void start_new_game(char board[BOARD_SIZE][BOARD_SIZE])
 	while(turnCounter<BOARD_SIZE*BOARD_SIZE)
 	{
 		bool move_made=false;
-		if(turnCounter%2==0)
+		if(turnCounter%2==0 && single_player)
 		{
 			/* Player move */
 			usrInput = getch();
-			
-			
+		
 			if(usrInput==KEY_MOUSE && getmouse(&event) == OK)
 			{
 				clickedColor = (mvinch(event.y, event.x) & A_COLOR) >> 8;
@@ -729,7 +728,7 @@ void start_new_game(char board[BOARD_SIZE][BOARD_SIZE])
 					x = screen2board_row(event.y);
 					y = screen2board_col(event.x);
 				}		
-			}	
+			}
 		}else
 		{
 			/* Omega move */
