@@ -858,10 +858,12 @@ void slave_work()
 	char filename[10];
 	sprintf(filename, "%d",myrank); 
 	MPI_Status status;
-	int heur_int = buf.player == 'X' ? heur_x : heur_o;
+	int heur_ind = -1;
 	while(true)
 	{		
 		MPI_Recv((void*)&buf, 1, mpi_msg_type, 0, 0, MPI_COMM_WORLD, &status);
+		if (heur_ind == -1)
+			heur_ind = buf.player == 'X' ? heur_x : heur_o;
 		MPI_job_counter=buf.job_no;
 		slbuf.ret_val=alpha_beta_pvs_r(buf.board, buf.depth, INT_MIN, INT_MAX, buf.player, heur_ind);
 		slbuf.index = buf.index;
