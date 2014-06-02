@@ -48,6 +48,11 @@ MPI_Datatype mpi_slmsg_type;
  
 int MPI_job_counter=100;
 int myrank;
+
+int single_player = 1;
+// if single_player => should heur_x == heur_o
+int heur_x = 0;
+int heur_o = 0;
  
 int in_bounds(int x, int y)
 {
@@ -374,12 +379,6 @@ void print_log(char *name, const char *format, ... )
 	va_end(arglist);
 	fclose(f);
 }
-
-
-int single_player = 1;
-// if single_player => should heur_x == heur_o
-int heur_x = 0;
-int heur_o = 0;
 
 static function heuristics[6] = { heur_sc, heur_mob, heur_mob_cor, heur_mob_cor_edg, heur_mob_cor_edg_st, heur_mob_cor_edg_st_time };
 
@@ -859,11 +858,12 @@ void slave_work()
 	char filename[10];
 	sprintf(filename, "%d",myrank); 
 	MPI_Status status;
+	int heur_int = buf.player == 'X' ? heur_x : heur_o;
 	while(true)
 	{		
 		MPI_Recv((void*)&buf, 1, mpi_msg_type, 0, 0, MPI_COMM_WORLD, &status);
 		MPI_job_counter=buf.job_no;
-		slbuf.ret_val=alpha_beta_pvs_r(buf.board, buf.depth, INT_MIN, INT_MAX, buf.player, buf.player == 'X' ? heur_x : heur_o);
+		slbuf.ret_val=alpha_beta_pvs_r(buf.board, buf.depth, INT_MIN, INT_MAX, buf.player, heur_ind);
 		slbuf.index = buf.index;
 		MPI_Send(&slbuf, 1, mpi_slmsg_type, 0, 0, MPI_COMM_WORLD);
 	}
