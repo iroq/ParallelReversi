@@ -1,6 +1,11 @@
 #include <ncurses.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <mpi.h>
+#include <signal.h>
+#include <string.h>
+#include <limits.h>
+#include <stdarg.h>
 #include "utils.h"
 #define BOARD_SIZE 8
 #define KEY_ENTER_DEF 10
@@ -12,8 +17,24 @@
 #define board2screen_col(x) x*2+col/2-BOARD_SIZE
 #define screen2board_row(x) x - (row/2-BOARD_SIZE/2)
 #define screen2board_col(x) (x - (col/2-BOARD_SIZE))/2
-
+#define ABDEPTH 6
+#define HEURISTIC(board, player) heur_sc(board, player)
 #define CORNER_WEIGHT 10
+
+typedef struct data_
+{
+	char board[BOARD_SIZE][BOARD_SIZE];
+	char player;
+	int depth;
+	int index;
+	int job_no;
+} data;
+
+typedef struct sldata_
+{
+	int ret_val;
+	int index;
+} sldata;
 
 void make_move(char board[BOARD_SIZE][BOARD_SIZE], int x, int y, char player);
 int find_possible_moves(char board[BOARD_SIZE][BOARD_SIZE], int moves[BOARD_SIZE * BOARD_SIZE][2], char currentPlayer);
@@ -21,7 +42,12 @@ int alpha_beta_r(char board[BOARD_SIZE][BOARD_SIZE], int depth, int a, int b, ch
 
 //for ncurses
 int row,col;
-  
+MPI_Datatype mpi_msg_type;
+MPI_Datatype mpi_slmsg_type;
+ 
+int MPI_job_counter=100;
+int myrank;
+ 
 int in_bounds(int x, int y)
 {
     return (x >= 0 && y >= 0 && x < BOARD_SIZE && y < BOARD_SIZE) ? 1 : 0;
@@ -300,63 +326,263 @@ int heur_mob_cor_edg_st_time(char board[BOARD_SIZE][BOARD_SIZE], char player)
 
 	return result;
 }
-
-int alpha_beta(char board[BOARD_SIZE][BOARD_SIZE], int pos_moves[BOARD_SIZE*BOARD_SIZE][2], int moves_c, char player)
-{
-	int i, val, x, y,max=0, ret=0;
-	char temp[BOARD_SIZE][BOARD_SIZE];
-	for(i=0; i<moves_c; i++)
-	{
-		x=pos_moves[i][0];
-		y=pos_moves[i][1];
-		copy_board(board, temp);
-		make_move(temp, x,y,player);
-		val=alpha_beta_r(board, 6, -10000000, 10000000, player, false);
-		if(val>max)
-		{
-			max=val;
-			ret=i;
-		}
-	}
-	return ret;
+	return ((i == 0 && j == 0)
+			|| (i == 0 && j == BOARD_SIZE - 1)
+			|| (i == BOARD_SIZE - 1 && j == 0)
+			|| (i == BOARD_SIZE - 1 && j == BOARD_SIZE - 1));
 }
 
-int alpha_beta_r(char board[BOARD_SIZE][BOARD_SIZE], int depth, int a, int b, char player, bool is_opp)
+int heur_mob_cor(char board[BOARD_SIZE][BOARD_SIZE], char player)
+{
+	int corner_weight = 4;
+	int result = 0;
+	int i, j, k, l;
+	// mobility of the player
+	int mob_pl = find_possible_moves(board, NULL, player);
+	// potential mobility of the player
+	int pot_mob_pl = 0;
+	// potential mobility of the opponent
+	int pot_mob_opp = 0;
+	int opp_neighbour, pl_neighbour;
+
+	for (i = 0; i < BOARD_SIZE; i++)
+		for (j = 0; j < BOARD_SIZE; j++)
+		{
+			mvprintw(5, 5, "[%d, %d]\n", i, j);
+			// check if the slot is next to at least one disk belonging to the player/opponent
+			if (board[i][j] == '-')
+			{
+				opp_neighbour = pl_neighbour = 0;
+				for (k = i - 1; k <= i + 1; k++)
+				{
+					if (opp_neighbour && pl_neighbour)
+						break;
+					for (l = j - 1; l <= j + 1; l++)
+					{
+						if (l < 0 || l >= BOARD_SIZE || k < 0 || k >= BOARD_SIZE)
+							continue;
+						if (opp_neighbour && pl_neighbour)
+							break;
+						if (!pl_neighbour && board[k][l] == opponent(player))
+							pl_neighbour = 1;
+						if (!opp_neighbour && board[k][l] == player)
+							opp_neighbour = 1;
+					}
+				}
+				if (opp_neighbour)
+					pot_mob_opp += isCorner(i, j) ? corner_weight : 1;
+				if (pl_neighbour)
+					pot_mob_pl += isCorner(i, j) ? corner_weight : 1;
+			}
+		}
+	result = mob_pl + pot_mob_pl - pot_mob_opp;	
+
+	if (board[0][BOARD_SIZE - 1] == player)
+		result += corner_weight;
+	if (board[0][BOARD_SIZE - 1] == opponent(player))
+		result -= corner_weight;
+	if (board[0][0] == player)
+		result += corner_weight;
+	if (board[0][0] == opponent(player))
+		result -= corner_weight;
+	if (board[BOARD_SIZE - 1][BOARD_SIZE - 1] == player)
+		result += corner_weight;
+	if (board[BOARD_SIZE - 1][BOARD_SIZE - 1] == opponent(player))
+		result -= corner_weight;
+	if (board[BOARD_SIZE - 1][0] == player)
+		result += corner_weight;
+	if (board[BOARD_SIZE - 1][0] == opponent(player))
+		result -= corner_weight;
+			
+	return result;
+}
+void create_struct()
+{
+	const int nitems=5, nitems1 = 2;
+    int blocklengths[5] = {BOARD_SIZE * BOARD_SIZE,1,1,1,1};
+    int blocklengths1[2] = {1,1};
+    MPI_Datatype types[5] = {MPI_CHAR, MPI_CHAR, MPI_INT, MPI_INT, MPI_INT};
+    MPI_Datatype types1[2] = {MPI_INT, MPI_INT};
+
+    MPI_Aint offsets[nitems];
+    MPI_Aint offsets1[nitems1];
+
+    offsets[0] = offsetof(data, board);
+    offsets[1] = offsetof(data, player);
+    offsets[2] = offsetof(data, depth);
+    offsets[3] = offsetof(data, index);
+    offsets[4] = offsetof(data, job_no);
+    
+    offsets1[0] = offsetof(sldata, ret_val);
+    offsets1[1] = offsetof(sldata, index);
+
+    MPI_Type_create_struct(nitems, blocklengths, offsets, types, &mpi_msg_type);
+    MPI_Type_commit(&mpi_msg_type);
+    
+    MPI_Type_create_struct(nitems1, blocklengths1, offsets1, types1, &mpi_slmsg_type);
+    MPI_Type_commit(&mpi_slmsg_type);
+}
+
+void print_log(char *name, const char *format, ... )
+{
+	va_list arglist;
+	
+	char buf[50];
+	sprintf(buf, "%s.txt", name);
+	FILE *f = fopen(buf, "a+");
+	if (f == NULL)
+	{
+	    printf("Error opening file!\n");
+	    exit(1);
+	}
+	fprintf(f, "[%d]: ", getpid());
+	va_start(arglist, format);
+	vfprintf(f, format, arglist);
+	va_end(arglist);
+	fclose(f);
+}
+
+int alpha_beta_pvs_r(char board[BOARD_SIZE][BOARD_SIZE], int depth, int a, int b, char player)
 {
 	if(depth==0)
-		return heur_mob_cor_edg_st_time(board, player);
+		return HEURISTIC(board, player);
+	
 	int pos_moves[BOARD_SIZE*BOARD_SIZE][2];
-	int moves_c, i;
+	int moves_c, i,score;
 	moves_c=find_possible_moves(board, pos_moves, player);
 	if(moves_c==0)
-		return heur_mob_cor_edg_st_time(board,player);
-	char temp[BOARD_SIZE][BOARD_SIZE];
-	if(is_opp)
+		return HEURISTIC(board, player);
+	int probe=0, rank_c, j;
+	MPI_Status stat;
+	MPI_Request req;
+	int a_recv;
+	char temp[BOARD_SIZE][BOARD_SIZE];	
+	MPI_Comm_size(MPI_COMM_WORLD, &rank_c); 
+	for(i=0; i<moves_c; i++)
 	{
-		//Opponent move
-		for(i=0;i<moves_c;i++)
+		copy_board(board, temp);
+		make_move(temp, pos_moves[i][0], pos_moves[i][1], player);
+		score=-alpha_beta_pvs_r(temp, depth-1, -b, -a, opponent(player));
+		if(score>b)
 		{
-			copy_board(board, temp);
-			make_move(temp, pos_moves[i][0], pos_moves[i][1], player);
-			b=min(b, alpha_beta_r(temp, depth-1, a, b, opponent(player), !is_opp));
-			if(a>=b)
-				break;
+			return b;
 		}
-		return b;
-	}else
-	{
-		//Player move
-		for(i=0;i<moves_c;i++)
+		
+		MPI_Iprobe(MPI_ANY_SOURCE, MPI_job_counter, MPI_COMM_WORLD, &probe, &stat);
+		if(probe)
 		{
-			copy_board(board, temp);
-			make_move(temp, pos_moves[i][0], pos_moves[i][1], player);
-			a=max(a, alpha_beta_r(temp, depth-1, a, b, opponent(player), !is_opp));
-			if(a>=b)
-				break;
+			MPI_Recv(&a_recv, 1, MPI_INT, MPI_ANY_SOURCE, MPI_job_counter, MPI_COMM_WORLD, &stat);
 		}
-		return a;
+		if(probe && same_sign(a, a_recv) && a_recv>score && a_recv > a)
+		{
+			a=a_recv;
+		}
+		else if(score>a)
+		{
+			a=score;
+			if(depth%2==0)
+			{
+				for(j = 1; j < rank_c; j++)
+				{
+					if(myrank == j) 
+						continue;
+					MPI_Isend(&a,1, MPI_INT, j, MPI_job_counter, MPI_COMM_WORLD, &req);
+				}
+			}
+		}	
 	}
+	return a;
+}
 
+int pv_split(char board[BOARD_SIZE][BOARD_SIZE], int depth, int a, int b, char player)
+{
+	if(depth==0)
+		return HEURISTIC(board, player);
+	int pos_moves[BOARD_SIZE*BOARD_SIZE][2];
+	int moves_c, i, score;
+	moves_c=find_possible_moves(board, pos_moves, player);
+	if(moves_c==0)
+		return HEURISTIC(board,player);
+	char temp[BOARD_SIZE][BOARD_SIZE];
+	int rank_c;
+	data msg;
+	sldata slmsg;
+	MPI_Status status;
+	MPI_Comm_size(MPI_COMM_WORLD, &rank_c); 
+	
+	copy_board(board, temp);
+	make_move(temp, pos_moves[0][0], pos_moves[0][1], player);
+	score=pv_split(temp, depth-1, a, b, opponent(player));
+	if(score>b)
+		return b;
+	if(score>a)
+		a=score;
+	
+	msg.job_no=MPI_job_counter;
+	
+	//Begin parallel loop
+	for(i=1; i<moves_c; i++)
+	{
+		copy_board(board, msg.board);
+		make_move(msg.board, pos_moves[i][0], pos_moves[i][1], player);
+		msg.player = player;
+		msg.depth = depth-1;
+		msg.index = i;
+		MPI_Send(&msg, 1, mpi_msg_type, (i % (rank_c-1))+1, 0, MPI_COMM_WORLD);		
+	}// End parallel loop
+	for(i=1; i<moves_c; i++)
+	{
+		MPI_Recv((void*)&slmsg, 1, mpi_slmsg_type, MPI_ANY_SOURCE, 0, MPI_COMM_WORLD, &status);
+		//score=alpha_beta_pvs_r(temp, depth-1, a, b, opponent(player));
+		if(slmsg.ret_val>b)
+			return b;
+		if(slmsg.ret_val>a)
+			a=slmsg.ret_val;
+	}	
+	return a;
+}
+
+int pv_split_master(char board[BOARD_SIZE][BOARD_SIZE], int pos_moves[BOARD_SIZE*BOARD_SIZE][2], int moves_c, char player)
+{
+	char temp[BOARD_SIZE][BOARD_SIZE];
+	int i, score,a=INT_MIN, b=INT_MAX,index;
+	int rank_c;
+	data msg;
+	sldata slmsg;
+	MPI_Status status;
+	MPI_Comm_size(MPI_COMM_WORLD, &rank_c); 
+	
+	copy_board(board, temp);
+	make_move(temp, pos_moves[0][0], pos_moves[0][1], player);
+	score=pv_split(temp, ABDEPTH-1, a, b, opponent(player));
+	a=score;
+	index=0;
+	msg.job_no=MPI_job_counter;
+	
+	//Begin parallel loop
+	for(i=1; i<moves_c; i++)
+	{
+		copy_board(board, msg.board);
+		make_move(msg.board, pos_moves[i][0], pos_moves[i][1], player);
+		score=alpha_beta_pvs_r(temp, ABDEPTH-1, a, b, opponent(player));
+		msg.player = player;
+		msg.depth = ABDEPTH-1;
+		msg.index = i;
+		MPI_Send(&msg, 1, mpi_msg_type, (i % (rank_c-1))+1, 0, MPI_COMM_WORLD);	
+	}// End parallel loop
+
+	for(i=1; i<moves_c; i++)
+	{
+		MPI_Recv((void*)&slmsg, 1, mpi_slmsg_type, MPI_ANY_SOURCE, 0, MPI_COMM_WORLD, &status);
+		//score=alpha_beta_pvs_r(temp, depth-1, a, b, opponent(player));
+		if(slmsg.ret_val>a)
+		{
+			a=slmsg.ret_val;
+			index=slmsg.index;
+		}
+	}
+	MPI_job_counter++;
+	return index;
 }
 
 void draw_board(char board[BOARD_SIZE][BOARD_SIZE])
@@ -489,7 +715,6 @@ int find_possible_moves(char board[BOARD_SIZE][BOARD_SIZE], int moves[BOARD_SIZE
         {
             if (is_legal_move(board, i, j, currentPlayer))
             {
-				//mvprintw(counter, 3, "[%d, %d]\n", i, j);
 				if (NULL != moves)
 				{
 		            moves[counter][0] = i;
@@ -523,16 +748,17 @@ void init_board(char board[BOARD_SIZE][BOARD_SIZE])
 
 void start_new_game(char board[BOARD_SIZE][BOARD_SIZE])
 {
-	int i, usrInput, currPlayer =0, turnCounter = 4, possibleMoves[BOARD_SIZE * BOARD_SIZE][2], moves, x, y;
+	int i, usrInput, turnCounter = 4, possibleMoves[BOARD_SIZE * BOARD_SIZE][2], moves, x, y;
 	int xcount, ocount, move_was_possible;
 	short clickedColor;	
-	char players[] = {'O', 'X'};
+	//char players[] = {'O', 'X'};
+	char currPlayer = 'O';
 	MEVENT event;
 	init_board(board);
 	mousemask(BUTTON1_CLICKED , NULL); 
 	noecho();
 	
-	moves = find_possible_moves(board, possibleMoves, players[currPlayer]);
+	moves = find_possible_moves(board, possibleMoves, currPlayer);
 	draw_board(board);
 	for(i = 0; i < moves; i++)
 	{
@@ -540,7 +766,7 @@ void start_new_game(char board[BOARD_SIZE][BOARD_SIZE])
 		mvaddch( board2screen_row(possibleMoves[i][0]), board2screen_col(possibleMoves[i][1]), '-');
 		attroff( COLOR_PAIR(POSSIBLE) );
 	}
-	mvprintw( 1, 1, "PLAYER: %c", players[currPlayer]);
+	mvprintw( 1, 1, "PLAYER: %c", currPlayer);
 
 	move_was_possible=TRUE;
 	while(turnCounter<BOARD_SIZE*BOARD_SIZE)
@@ -550,6 +776,8 @@ void start_new_game(char board[BOARD_SIZE][BOARD_SIZE])
 		{
 			/* Player move */
 			usrInput = getch();
+			
+			
 			if(usrInput==KEY_MOUSE && getmouse(&event) == OK)
 			{
 				clickedColor = (mvinch(event.y, event.x) & A_COLOR) >> 8;
@@ -563,9 +791,7 @@ void start_new_game(char board[BOARD_SIZE][BOARD_SIZE])
 		}else
 		{
 			/* Omega move */
-			// debug
-			sleep(2);
-			int index=alpha_beta(board, possibleMoves, moves, players[currPlayer]);
+			int index=pv_split_master(board, possibleMoves, moves, currPlayer);
 			x=possibleMoves[index][0];
 			y=possibleMoves[index][1];
 			move_made=true;
@@ -573,10 +799,10 @@ void start_new_game(char board[BOARD_SIZE][BOARD_SIZE])
 		if(move_made)
 		{
 			standend();
-			attron( COLOR_PAIR(currPlayer + 1) );
-			mvaddch( event.y, event.x, players[currPlayer] );
-			attroff( COLOR_PAIR(currPlayer + 1) );
-			make_move(board, x, y, players[currPlayer]);
+			attron( COLOR_PAIR(currPlayer == '0' ?  WHITE : BLACK) );
+			mvaddch( event.y, event.x, currPlayer );
+			attroff( COLOR_PAIR(currPlayer == '0' ?  WHITE : BLACK) );
+			make_move(board, x, y, currPlayer);
 			count_stones(&xcount, &ocount, board);
 			draw_board(board);
 			// debug
@@ -584,15 +810,16 @@ void start_new_game(char board[BOARD_SIZE][BOARD_SIZE])
 			mvprintw(2,1, "X SCORE: %d", xcount);
 			mvprintw(3,1, "O SCORE: %d", ocount);			
 
-			currPlayer = (currPlayer + 1)%2;	
-			moves = find_possible_moves(board, possibleMoves, players[currPlayer]);
+			currPlayer = opponent(currPlayer);	
+			moves = find_possible_moves(board, possibleMoves, currPlayer);
 			if(moves==0)
 			{
+				currPlayer = opponent(currPlayer);
 				if(!move_was_possible)
-					break;
+					break;					
 				else
-					move_was_possible=FALSE;
-			}
+					move_was_possible = false;
+			}				
 				
 			for(i = 0; i < moves; i++)
 			{
@@ -600,16 +827,23 @@ void start_new_game(char board[BOARD_SIZE][BOARD_SIZE])
 				mvaddch( board2screen_row(possibleMoves[i][0]), board2screen_col(possibleMoves[i][1]), '-');
 				attroff( COLOR_PAIR(POSSIBLE) );
 			}
-			mvprintw( 1, 1, "PLAYER: %c", players[currPlayer]);
+			mvprintw( 1, 1, "PLAYER: %c", currPlayer);
 			refresh();
 			turnCounter++;			
 		}
 	}
 	clear();
 	if(xcount==ocount)
+	{
 		mvprintw(row/2, (col/2)-2, "TIE!");
+	}
 	else
+	{
 		mvprintw(row/2, (col/2)-5, "PLAYER: %c WON!", (xcount<ocount)?'O':'X');
+		
+	}
+	refresh();
+	getch();
 	getch();
 	return;
 }
@@ -667,13 +901,46 @@ void display_menu(char board[BOARD_SIZE][BOARD_SIZE])
     } while( currItem != 2 || usrInput != 10 );
 }
 
-int main()
-{	
+void master_work()
+{
 	char board[BOARD_SIZE][BOARD_SIZE];	
 	init_board(board);
     display_menu(board);    
     printw( "Thanks for playing!" );
     getch();
-    endwin();   
+    endwin();  
+}
+
+void slave_work()
+{
+	data buf;
+	sldata slbuf;
+	char filename[10];
+	sprintf(filename, "%d",myrank); 
+	MPI_Status status;
+	while(true)
+	{		
+		MPI_Recv((void*)&buf, 1, mpi_msg_type, 0, 0, MPI_COMM_WORLD, &status);
+		MPI_job_counter=buf.job_no;
+		slbuf.ret_val=alpha_beta_pvs_r(buf.board, buf.depth, INT_MIN, INT_MAX, buf.player);
+		slbuf.index = buf.index;
+		MPI_Send(&slbuf, 1, mpi_slmsg_type, 0, 0, MPI_COMM_WORLD);
+	}
+}
+int main(int argc, char **argv)
+{	
+	MPI_Init(&argc, &argv);
+	MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
+	create_struct();
+	switch(myrank)
+	{
+		case 0:
+			master_work();
+			break;
+		default:
+			slave_work();
+			break;
+	}
+	MPI_Finalize();
     return 0; 
 }
