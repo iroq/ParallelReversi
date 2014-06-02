@@ -325,77 +325,10 @@ int heur_mob_cor_edg_st_time(char board[BOARD_SIZE][BOARD_SIZE], char player)
 	mvprintw(7, 3, "Heuristics for %c: [%d]\n", player, result);
 
 	return result;
-}
-	return ((i == 0 && j == 0)
-			|| (i == 0 && j == BOARD_SIZE - 1)
-			|| (i == BOARD_SIZE - 1 && j == 0)
-			|| (i == BOARD_SIZE - 1 && j == BOARD_SIZE - 1));
+
+
 }
 
-int heur_mob_cor(char board[BOARD_SIZE][BOARD_SIZE], char player)
-{
-	int corner_weight = 4;
-	int result = 0;
-	int i, j, k, l;
-	// mobility of the player
-	int mob_pl = find_possible_moves(board, NULL, player);
-	// potential mobility of the player
-	int pot_mob_pl = 0;
-	// potential mobility of the opponent
-	int pot_mob_opp = 0;
-	int opp_neighbour, pl_neighbour;
-
-	for (i = 0; i < BOARD_SIZE; i++)
-		for (j = 0; j < BOARD_SIZE; j++)
-		{
-			mvprintw(5, 5, "[%d, %d]\n", i, j);
-			// check if the slot is next to at least one disk belonging to the player/opponent
-			if (board[i][j] == '-')
-			{
-				opp_neighbour = pl_neighbour = 0;
-				for (k = i - 1; k <= i + 1; k++)
-				{
-					if (opp_neighbour && pl_neighbour)
-						break;
-					for (l = j - 1; l <= j + 1; l++)
-					{
-						if (l < 0 || l >= BOARD_SIZE || k < 0 || k >= BOARD_SIZE)
-							continue;
-						if (opp_neighbour && pl_neighbour)
-							break;
-						if (!pl_neighbour && board[k][l] == opponent(player))
-							pl_neighbour = 1;
-						if (!opp_neighbour && board[k][l] == player)
-							opp_neighbour = 1;
-					}
-				}
-				if (opp_neighbour)
-					pot_mob_opp += isCorner(i, j) ? corner_weight : 1;
-				if (pl_neighbour)
-					pot_mob_pl += isCorner(i, j) ? corner_weight : 1;
-			}
-		}
-	result = mob_pl + pot_mob_pl - pot_mob_opp;	
-
-	if (board[0][BOARD_SIZE - 1] == player)
-		result += corner_weight;
-	if (board[0][BOARD_SIZE - 1] == opponent(player))
-		result -= corner_weight;
-	if (board[0][0] == player)
-		result += corner_weight;
-	if (board[0][0] == opponent(player))
-		result -= corner_weight;
-	if (board[BOARD_SIZE - 1][BOARD_SIZE - 1] == player)
-		result += corner_weight;
-	if (board[BOARD_SIZE - 1][BOARD_SIZE - 1] == opponent(player))
-		result -= corner_weight;
-	if (board[BOARD_SIZE - 1][0] == player)
-		result += corner_weight;
-	if (board[BOARD_SIZE - 1][0] == opponent(player))
-		result -= corner_weight;
-			
-	return result;
-}
 void create_struct()
 {
 	const int nitems=5, nitems1 = 2;
@@ -806,7 +739,7 @@ void start_new_game(char board[BOARD_SIZE][BOARD_SIZE])
 			count_stones(&xcount, &ocount, board);
 			draw_board(board);
 			// debug
-			heur_mob_cor_edg_st_time(board, players[currPlayer]);
+			heur_mob_cor_edg_st_time(board, currPlayer);
 			mvprintw(2,1, "X SCORE: %d", xcount);
 			mvprintw(3,1, "O SCORE: %d", ocount);			
 
