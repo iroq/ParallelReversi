@@ -375,20 +375,24 @@ void print_log(char *name, const char *format, ... )
 	fclose(f);
 }
 
-int heuristic = 0;
+
+int multiplayer = 0;
+// if multiplayer => heur_x == heur_o
+int heur_x = 0;
+int heur_o = 0;
 
 static function heuristics[6] = { heur_sc, heur_mob, heur_mob_cor, heur_mob_cor_edg, heur_mob_cor_edg_st, heur_mob_cor_edg_st_time };
 
-int alpha_beta_pvs_r(char board[BOARD_SIZE][BOARD_SIZE], int depth, int a, int b, char player)
+int alpha_beta_pvs_r(char board[BOARD_SIZE][BOARD_SIZE], int depth, int a, int b, char player, int heur_ind)
 {
 	if(depth==0)
-		return heuristics[heuristic](board, player);
+		return heuristics[heur_ind](board, player);
 	
 	int pos_moves[BOARD_SIZE*BOARD_SIZE][2];
 	int moves_c, i,score;
 	moves_c=find_possible_moves(board, pos_moves, player);
 	if(moves_c==0)
-		return heuristics[heuristic](board, player);
+		return heuristics[heur_ind](board, player);
 	int probe=0, rank_c, j;
 	MPI_Status stat;
 	MPI_Request req;
@@ -399,7 +403,7 @@ int alpha_beta_pvs_r(char board[BOARD_SIZE][BOARD_SIZE], int depth, int a, int b
 	{
 		copy_board(board, temp);
 		make_move(temp, pos_moves[i][0], pos_moves[i][1], player);
-		score=-alpha_beta_pvs_r(temp, depth-1, -b, -a, opponent(player));
+		score=-alpha_beta_pvs_r(temp, depth-1, -b, -a, opponent(player), heur_ind);
 		if(score>b)
 		{
 			return b;
@@ -431,15 +435,15 @@ int alpha_beta_pvs_r(char board[BOARD_SIZE][BOARD_SIZE], int depth, int a, int b
 	return a;
 }
 
-int pv_split(char board[BOARD_SIZE][BOARD_SIZE], int depth, int a, int b, char player)
+int pv_split(char board[BOARD_SIZE][BOARD_SIZE], int depth, int a, int b, char player, int heur_ind)
 {
 	if(depth==0)
-		return heuristics[heuristic](board, player);
+		return heuristics[heur_ind](board, player);
 	int pos_moves[BOARD_SIZE*BOARD_SIZE][2];
 	int moves_c, i, score;
 	moves_c=find_possible_moves(board, pos_moves, player);
 	if(moves_c==0)
-		return heuristics[heuristic](board,player);
+		return heuristics[heur_ind](board,player);
 	char temp[BOARD_SIZE][BOARD_SIZE];
 	int rank_c;
 	data msg;
@@ -449,7 +453,7 @@ int pv_split(char board[BOARD_SIZE][BOARD_SIZE], int depth, int a, int b, char p
 	
 	copy_board(board, temp);
 	make_move(temp, pos_moves[0][0], pos_moves[0][1], player);
-	score=pv_split(temp, depth-1, a, b, opponent(player));
+	score=pv_split(temp, depth-1, a, b, opponent(player), heur_ind);
 	if(score>b)
 		return b;
 	if(score>a)
@@ -484,6 +488,7 @@ int pv_split_master(char board[BOARD_SIZE][BOARD_SIZE], int pos_moves[BOARD_SIZE
 	char temp[BOARD_SIZE][BOARD_SIZE];
 	int i, score,a=INT_MIN, b=INT_MAX,index;
 	int rank_c;
+	int heur_ind = player == 'X' ? heur_x : heur_o;
 	data msg;
 	sldata slmsg;
 	MPI_Status status;
@@ -491,7 +496,7 @@ int pv_split_master(char board[BOARD_SIZE][BOARD_SIZE], int pos_moves[BOARD_SIZE
 	
 	copy_board(board, temp);
 	make_move(temp, pos_moves[0][0], pos_moves[0][1], player);
-	score=pv_split(temp, ABDEPTH-1, a, b, opponent(player));
+	score=pv_split(temp, ABDEPTH-1, a, b, opponent(player), heur_ind);
 	a=score;
 	index=0;
 	msg.job_no=MPI_job_counter;
@@ -501,7 +506,7 @@ int pv_split_master(char board[BOARD_SIZE][BOARD_SIZE], int pos_moves[BOARD_SIZE
 	{
 		copy_board(board, msg.board);
 		make_move(msg.board, pos_moves[i][0], pos_moves[i][1], player);
-		score=alpha_beta_pvs_r(temp, ABDEPTH-1, a, b, opponent(player));
+		score=alpha_beta_pvs_r(temp, ABDEPTH-1, a, b, opponent(player), heur_ind);
 		msg.player = player;
 		msg.depth = ABDEPTH-1;
 		msg.index = i;
@@ -743,7 +748,7 @@ void start_new_game(char board[BOARD_SIZE][BOARD_SIZE])
 			count_stones(&xcount, &ocount, board);
 			draw_board(board);
 			// debug
-			heuristics[heuristic](board, currPlayer);
+			heuristics[currPlayer == 'X' ? heur_x : heur_o](board, currPlayer);
 			mvprintw(2,1, "X SCORE: %d", xcount);
 			mvprintw(3,1, "O SCORE: %d", ocount);			
 
@@ -859,7 +864,7 @@ void slave_work()
 	{		
 		MPI_Recv((void*)&buf, 1, mpi_msg_type, 0, 0, MPI_COMM_WORLD, &status);
 		MPI_job_counter=buf.job_no;
-		slbuf.ret_val=alpha_beta_pvs_r(buf.board, buf.depth, INT_MIN, INT_MAX, buf.player);
+		slbuf.ret_val=alpha_beta_pvs_r(buf.board, buf.depth, INT_MIN, INT_MAX, buf.player, buf.player == 'X' ? heur_x : heur_o);
 		slbuf.index = buf.index;
 		MPI_Send(&slbuf, 1, mpi_slmsg_type, 0, 0, MPI_COMM_WORLD);
 	}
