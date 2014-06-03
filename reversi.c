@@ -920,7 +920,7 @@ void set_heuristics(char **argv)
 	}
 	else
 	{
-		single_player = 10;
+		single_player = 0;
 		heur_o = atoi(argv[1]);
 		heur_x = atoi(argv[2]);
 	}
