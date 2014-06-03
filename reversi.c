@@ -882,8 +882,57 @@ void slave_work()
 		MPI_Send(&slbuf, 1, mpi_slmsg_type, 0, 0, MPI_COMM_WORLD);
 	}
 }
+
+void usage()
+{
+	fprintf(stderr,"USAGE: ./mpi_reversi.sh <heur O> <heur X>\n");
+	fprintf(stderr,"Heur1 and heur2 are the heuristics for bots:\n");
+	fprintf(stderr,"0 - Score\n");
+	fprintf(stderr,"1 - Mobility");
+	fprintf(stderr,"2 - Mobility, Corners\n");
+	fprintf(stderr,"3 - Mobility, Corners, Edges\n");
+	fprintf(stderr,"4 - Mobility, Corners, Edges, Stability\n");
+	fprintf(stderr,"5 - Mobility, Corners, Edges, Stability, Time\n");
+	fprintf(stderr,"-1 for one of them - single player mode\n");
+	//{ heur_sc, heur_mob, heur_mob_cor, heur_mob_cor_edg, heur_mob_cor_edg_st, heur_mob_cor_edg_st_time };
+	
+}
+
+void set_heuristics(char **argv)
+{
+	if(atoi(argv[1]) < 0)
+	{
+		single_player = 1;
+		if(atoi(argv[2]) < 0)
+		{
+			printf("Heuristic for the bot not chosen, selecting the most complex one");
+			heur_o = heur_x = 5;
+		}
+		else
+			heur_o = heur_x = atoi(argv[2]);
+	}
+	else if(atoi(argv[2] < 0)
+	{
+		single_player = 1;
+		heur_o = heur_x = atoi(argv[1]);
+	}
+	else
+	{
+		single_player = 10;
+		heur_o = atoi(argv[1]);
+		heur_x = atoi(argv[2]);
+	}
+}
+
 int main(int argc, char **argv)
 {	
+	if(argc != 3 || atoi(argv[1]) > 5 || atoi(argv[2]) > 5)
+	{
+		usage();
+		return EXIT_FAILURE;
+	}
+	set_heuristics(argv);
+	
 	MPI_Init(&argc, &argv);
 	MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
 	create_struct();
