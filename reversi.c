@@ -6,6 +6,7 @@
 #include <string.h>
 #include <limits.h>
 #include <stdarg.h>
+#include <time.h>
 #include "utils.h"
 #define BOARD_SIZE 8
 #define KEY_ENTER_DEF 10
@@ -695,6 +696,8 @@ void start_new_game(char board[BOARD_SIZE][BOARD_SIZE])
 	//char players[] = {'O', 'X'};
 	char currPlayer = 'O';
 	MEVENT event;
+	time_t start, end;
+	double time_diff;
 	init_board(board);
 	mousemask(BUTTON1_CLICKED , NULL); 
 	noecho();
@@ -708,6 +711,8 @@ void start_new_game(char board[BOARD_SIZE][BOARD_SIZE])
 		attroff( COLOR_PAIR(POSSIBLE) );
 	}
 	mvprintw( 1, 1, "PLAYER: %c", currPlayer);
+	
+	time(&start);
 
 	move_was_possible=TRUE;
 	while(turnCounter<BOARD_SIZE*BOARD_SIZE)
@@ -772,7 +777,14 @@ void start_new_game(char board[BOARD_SIZE][BOARD_SIZE])
 			turnCounter++;			
 		}
 	}
+	
+	time(&end);	
+	time_diff = difftime(end, start);
+
 	clear();
+
+	mvprintw(1, (col/2)-5, "Time: %2lf seconds.", time_diff);
+
 	if(xcount==ocount)
 	{
 		mvprintw(row/2, (col/2)-2, "TIE!");
