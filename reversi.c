@@ -712,7 +712,6 @@ void start_new_game(char board[BOARD_SIZE][BOARD_SIZE])
 	}
 	mvprintw( 1, 1, "PLAYER: %c", currPlayer);
 	
-	time(&start);
 
 	move_was_possible=TRUE;
 	while(turnCounter<BOARD_SIZE*BOARD_SIZE)
@@ -736,7 +735,12 @@ void start_new_game(char board[BOARD_SIZE][BOARD_SIZE])
 		}else
 		{
 			/* Omega move */
+			
+			time(&start);
 			int index=pv_split_master(board, possibleMoves, moves, currPlayer);
+			time(&end);	
+			time_diff = difftime(end, start);
+			print_log("stats", "Heur no: %c, time: %d", (currPlayer == 'O' ? heur_o : heur_x), difftime);			
 			x=possibleMoves[index][0];
 			y=possibleMoves[index][1];
 			move_made=true;
@@ -778,12 +782,10 @@ void start_new_game(char board[BOARD_SIZE][BOARD_SIZE])
 		}
 	}
 	
-	time(&end);	
-	time_diff = difftime(end, start);
 
 	clear();
 
-	mvprintw(1, (col/2)-5, "Time: %2lf seconds.", time_diff);
+	//mvprintw(1, (col/2)-5, "Time: %2lf seconds.", time_diff);
 
 	if(xcount==ocount)
 	{
@@ -886,7 +888,7 @@ void slave_work()
 void usage()
 {
 	fprintf(stderr,"USAGE: ./mpi_reversi.sh <heur O> <heur X>\n");
-	fprintf(stderr,"Heur1 and heur2 are the heuristics for bots:\n");
+	fprintf(stderr,"Heur O and heur X are the heuristics for bots:\n");
 	fprintf(stderr,"0 - Score\n");
 	fprintf(stderr,"1 - Mobility");
 	fprintf(stderr,"2 - Mobility, Corners\n");
