@@ -690,7 +690,7 @@ void init_board(char board[BOARD_SIZE][BOARD_SIZE])
 
 void start_new_game(char board[BOARD_SIZE][BOARD_SIZE])
 {
-	int i, usrInput, turnCounter = 4, possibleMoves[BOARD_SIZE * BOARD_SIZE][2], moves, x, y;
+	int i, rank_c, usrInput, turnCounter = 4, possibleMoves[BOARD_SIZE * BOARD_SIZE][2], moves, x, y;
 	int xcount, ocount, move_was_possible;
 	short clickedColor;	
 	//char players[] = {'O', 'X'};
@@ -700,6 +700,7 @@ void start_new_game(char board[BOARD_SIZE][BOARD_SIZE])
 	double time_diff;
 	init_board(board);
 	mousemask(BUTTON1_CLICKED , NULL); 
+	MPI_Comm_size(MPI_COMM_WORLD, &rank_c); 
 	noecho();
 	
 	moves = find_possible_moves(board, possibleMoves, currPlayer);
@@ -740,7 +741,7 @@ void start_new_game(char board[BOARD_SIZE][BOARD_SIZE])
 			int index=pv_split_master(board, possibleMoves, moves, currPlayer);
 			time(&end);	
 			time_diff = difftime(end, start);
-			print_log("stats", "Heur no: %c, time: %d", (currPlayer == 'O' ? heur_o : heur_x), difftime);			
+			print_log("stats", "Heur no: %d, time: %d, depth: %d, no of processors: %d\n", (currPlayer == 'O' ? heur_o : heur_x), difftime, ABDEPTH, rank_c);			
 			x=possibleMoves[index][0];
 			y=possibleMoves[index][1];
 			move_made=true;
