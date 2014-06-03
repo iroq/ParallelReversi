@@ -911,7 +911,7 @@ void set_heuristics(char **argv)
 		else
 			heur_o = heur_x = atoi(argv[2]);
 	}
-	else if(atoi(argv[2] < 0)
+	else if(atoi(argv[2] < 0))
 	{
 		single_player = 1;
 		heur_o = heur_x = atoi(argv[1]);
