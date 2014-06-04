@@ -891,7 +891,7 @@ void usage()
 	fprintf(stderr,"USAGE: ./mpi_reversi.sh <heur O> <heur X>\n");
 	fprintf(stderr,"Heur O and heur X are the heuristics for bots:\n");
 	fprintf(stderr,"0 - Score\n");
-	fprintf(stderr,"1 - Mobility");
+	fprintf(stderr,"1 - Mobility\n");
 	fprintf(stderr,"2 - Mobility, Corners\n");
 	fprintf(stderr,"3 - Mobility, Corners, Edges\n");
 	fprintf(stderr,"4 - Mobility, Corners, Edges, Stability\n");
