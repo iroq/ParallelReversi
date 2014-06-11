@@ -8,6 +8,7 @@
 #include <stdarg.h>
 #include <time.h>
 #include "utils.h"
+#include <sys/time.h>
 #define BOARD_SIZE 8
 #define KEY_ENTER_DEF 10
 #define WHITE 1
@@ -20,6 +21,14 @@
 #define screen2board_col(x) (x - (col/2-BOARD_SIZE))/2
 #define ABDEPTH 6
 #define CORNER_WEIGHT 10
+
+#define MEASURE(func,name) struct timeval _t1, _t2;\
+			gettimeofday(&_t1,NULL);\
+			func;\
+			gettimeofday(&_t2,NULL);\
+			print_log("times", name "time: %lu\n", (1000000*_t2.tv_sec+_t2.tv_usec)-(1000000*_t1.tv_sec+_t1.tv_usec));
+	
+
 
 typedef struct data_
 {
@@ -41,6 +50,10 @@ typedef int (*function)(char board[BOARD_SIZE][BOARD_SIZE], char player);
 void make_move(char board[BOARD_SIZE][BOARD_SIZE], int x, int y, char player);
 int find_possible_moves(char board[BOARD_SIZE][BOARD_SIZE], int moves[BOARD_SIZE * BOARD_SIZE][2], char currentPlayer);
 int alpha_beta_r(char board[BOARD_SIZE][BOARD_SIZE], int depth, int a, int b, char player, bool is_opp);
+
+//worker vars
+int depths[20];
+unsigned long counter = 0;
 
 //for ncurses
 int row,col;
@@ -365,7 +378,6 @@ void create_struct()
 void print_log(char *name, const char *format, ... )
 {
 	va_list arglist;
-	
 	char buf[50];
 	sprintf(buf, "%s.txt", name);
 	FILE *f = fopen(buf, "a+");
@@ -397,38 +409,48 @@ int alpha_beta_pvs_r(char board[BOARD_SIZE][BOARD_SIZE], int depth, int a, int b
 	MPI_Status stat;
 	MPI_Request req;
 	int a_recv;
+	
 	char temp[BOARD_SIZE][BOARD_SIZE];	
 	MPI_Comm_size(MPI_COMM_WORLD, &rank_c); 
 	for(i=0; i<moves_c; i++)
 	{
 		copy_board(board, temp);
 		make_move(temp, pos_moves[i][0], pos_moves[i][1], player);
+		counter++;
 		score=-alpha_beta_pvs_r(temp, depth-1, -b, -a, opponent(player), heur_ind);
 		if(score>b)
 		{
 			return b;
 		}
-		
-		MPI_Iprobe(MPI_ANY_SOURCE, MPI_job_counter, MPI_COMM_WORLD, &probe, &stat);
-		if(probe)
+		if(1) //additional probe condition
+		{
+			counter=0;
+			MEASURE(MPI_Iprobe(MPI_ANY_SOURCE, MPI_job_counter, MPI_COMM_WORLD, &probe, &stat), "iprobe");
+		}
+		else
+			probe=0;
+		while(probe)
 		{
 			MPI_Recv(&a_recv, 1, MPI_INT, MPI_ANY_SOURCE, MPI_job_counter, MPI_COMM_WORLD, &stat);
+	                if(probe && same_sign(a, a_recv) && a_recv>score && a_recv > a)
+                        {
+                       		 a=a_recv;
+                        }
+			MPI_Iprobe(MPI_ANY_SOURCE, MPI_job_counter, MPI_COMM_WORLD, &probe, &stat);
 		}
-		if(probe && same_sign(a, a_recv) && a_recv>score && a_recv > a)
-		{
-			a=a_recv;
-		}
-		else if(score>a)
+		if(score>a)
 		{
 			a=score;
-			if(depth%2==0)
+			if(1) //additional send condition
 			{
+				depths[depth]=1;
 				for(j = 1; j < rank_c; j++)
 				{
 					if(myrank == j) 
 						continue;
 					MPI_Isend(&a,1, MPI_INT, j, MPI_job_counter, MPI_COMM_WORLD, &req);
 				}
+
 			}
 		}	
 	}
@@ -447,7 +469,7 @@ int pv_split(char board[BOARD_SIZE][BOARD_SIZE], int depth, int a, int b, char p
 	char temp[BOARD_SIZE][BOARD_SIZE];
 	int rank_c;
 	data msg;
-	sldata slmsg;
+	sldata slmsg;	
 	MPI_Status status;
 	MPI_Comm_size(MPI_COMM_WORLD, &rank_c); 
 	
@@ -469,7 +491,7 @@ int pv_split(char board[BOARD_SIZE][BOARD_SIZE], int depth, int a, int b, char p
 		msg.player = player;
 		msg.depth = depth-1;
 		msg.index = i;
-		MPI_Send(&msg, 1, mpi_msg_type, (i % (rank_c-1))+1, 0, MPI_COMM_WORLD);		
+		MPI_Send(&msg, 1, mpi_msg_type, (i % (rank_c-1))+1, 0, MPI_COMM_WORLD);
 	}// End parallel loop
 	for(i=1; i<moves_c; i++)
 	{
@@ -696,8 +718,8 @@ void start_new_game(char board[BOARD_SIZE][BOARD_SIZE])
 	//char players[] = {'O', 'X'};
 	char currPlayer = 'O';
 	MEVENT event;
-	time_t start, end;
-	double time_diff;
+	struct timespec start, end;
+	unsigned long time_diff;
 	init_board(board);
 	mousemask(BUTTON1_CLICKED , NULL); 
 	MPI_Comm_size(MPI_COMM_WORLD, &rank_c); 
@@ -737,11 +759,12 @@ void start_new_game(char board[BOARD_SIZE][BOARD_SIZE])
 		{
 			/* Omega move */
 			
-			time(&start);
+			clock_gettime(CLOCK_MONOTONIC, &start);
 			int index=pv_split_master(board, possibleMoves, moves, currPlayer);
-			time(&end);	
-			time_diff = difftime(end, start);
-			print_log("stats", "Heur no: %d, time: %d, depth: %d, no of processors: %d\n", (currPlayer == 'O' ? heur_o : heur_x), difftime, ABDEPTH, rank_c);			
+			clock_gettime(CLOCK_MONOTONIC, &end);	
+			time_diff = (end.tv_sec*1000+end.tv_nsec/1000)-(start.tv_sec*1000+end.tv_nsec/1000);
+			print_log("stats", "Heur no: %d, time: %lu, depth: %d, no of processors: %d\n",
+				 (currPlayer == 'O' ? heur_o : heur_x), time_diff, ABDEPTH, rank_c);			
 			x=possibleMoves[index][0];
 			y=possibleMoves[index][1];
 			move_made=true;
@@ -880,6 +903,7 @@ void slave_work()
 		if (heur_ind == -1)
 			heur_ind = buf.player == 'X' ? heur_x : heur_o;
 		MPI_job_counter=buf.job_no;
+		memset(depths, 0, sizeof(int)*20);
 		slbuf.ret_val=alpha_beta_pvs_r(buf.board, buf.depth, INT_MIN, INT_MAX, buf.player, heur_ind);
 		slbuf.index = buf.index;
 		MPI_Send(&slbuf, 1, mpi_slmsg_type, 0, 0, MPI_COMM_WORLD);

@@ -2,7 +2,7 @@ CC=mpicc
 
 all: reversi
 reversi: reversi.o utils.o
-	$(CC) -Wall -o reversi reversi.o utils.o -lncurses
+	$(CC) -Wall -o reversi reversi.o utils.o -lncurses -lrt
 utils.o: utils.c
 	$(CC) -c -Wall -o utils.o utils.c
 reversi.o: reversi.c
