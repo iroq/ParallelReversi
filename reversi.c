@@ -425,7 +425,7 @@ int alpha_beta_pvs_r(char board[BOARD_SIZE][BOARD_SIZE], int depth, int a, int b
 		{
 			return b;
 		}
-		if(1) //additional probe condition
+		if(depth%2==1) //additional probe condition
 		{
 			counter=0;
 			MEASURE(MPI_Iprobe(MPI_ANY_SOURCE, MPI_job_counter, MPI_COMM_WORLD, &probe, &stat), "iprobe");
