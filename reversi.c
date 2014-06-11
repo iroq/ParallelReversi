@@ -22,7 +22,7 @@
 #define ABDEPTH 6
 #define CORNER_WEIGHT 10
 
-#define MEASURE(func,name) struct timeval _t1, _t2;\
+#define MEASURE(func,name) \
 			gettimeofday(&_t1,NULL);\
 			func;\
 			gettimeofday(&_t2,NULL);\
@@ -50,6 +50,9 @@ typedef int (*function)(char board[BOARD_SIZE][BOARD_SIZE], char player);
 void make_move(char board[BOARD_SIZE][BOARD_SIZE], int x, int y, char player);
 int find_possible_moves(char board[BOARD_SIZE][BOARD_SIZE], int moves[BOARD_SIZE * BOARD_SIZE][2], char currentPlayer);
 int alpha_beta_r(char board[BOARD_SIZE][BOARD_SIZE], int depth, int a, int b, char player, bool is_opp);
+
+//measure macro vars
+struct timeval _t1, _t2;
 
 //worker vars
 int depths[20];
